@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { HelperProcess } from '../src/helper-process.js'
+import { HelperProcess, defaultHelperPath } from '../src/helper-process.js'
 import { CompanionMessageKind, CompanionState, createMessage } from '../src/protocol.js'
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'restart-helper.js')
 const closedFixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'closed-helper.js')
 const crashBeforeReadyFixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'crash-before-ready.js')
+
+// The bundled Apple-Silicon Swift helper is only present after `npm run build:helper:mac`.
+// CI without a Mac build skips this real-binary integration test instead of failing.
+const swiftHelperPath = join(dirname(defaultHelperPath), 'bin', 'darwin-arm64', 'dsh-dafeiyu-helper')
+const swiftHelperExists = existsSync(swiftHelperPath)
 
 async function waitFor(predicate, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs
@@ -161,4 +167,28 @@ test('a launch that throws synchronously cannot crash the host and is bounded', 
   assert.equal(bridge.startFailures, afterGiveUp)
   assert.equal(bridge.child, undefined)
   bridge.stop('launch-throw-test-complete')
+})
+
+test('killing the real Swift helper triggers a bounded automatic restart', { skip: !swiftHelperExists }, async () => {
+  const logger = { debug() {}, info() {}, warn() {}, error() {} }
+  const bridge = new HelperProcess({
+    command: swiftHelperPath,
+    headless: true,
+    heartbeatMs: 0,
+    restartDelayMs: 30,
+  }, logger)
+  const first = bridge.start()
+  // The Swift helper becomes ready (first spawn); wait for the READY handshake.
+  await waitFor(() => bridge.spawned === true, 5000)
+
+  // Simulate an unexpected crash: kill the child. The bridge must respawn a new
+  // process (different child reference) and become ready again, without flipping
+  // restartSuppressed before the retry limit.
+  first.kill()
+  await waitFor(() => bridge.child && bridge.child !== first, 5000)
+  await waitFor(() => bridge.spawned === true, 5000)
+  assert.equal(bridge.restartSuppressed, false)
+
+  bridge.stop('swift-restart-test-complete')
+  await waitFor(() => bridge.child === undefined, 5000)
 })

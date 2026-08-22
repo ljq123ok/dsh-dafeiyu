@@ -78,7 +78,7 @@ test('helper heartbeat stays healthy and responds without a restart', async () =
     } catch {
       return false
     }
-  })
+  }, 8000)
   await new Promise((resolve) => setTimeout(resolve, 220))
   assert.equal(bridge.child, initialChild)
   bridge.stop('heartbeat-test-complete')

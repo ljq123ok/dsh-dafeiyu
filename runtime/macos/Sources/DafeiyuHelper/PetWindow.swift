@@ -1,15 +1,22 @@
-// PetWindow (Step4 of the macOS native refactor).
+// PetWindow (Step5 of the macOS native refactor).
 //
-// A transparent, borderless, always-on-top NSPanel that hosts the idle PetView.
-// Window attributes are taken verbatim from the v2 plan §4.2.
+// A transparent, borderless, always-on-top NSPanel that hosts an animated PetView.
+// Window attributes are taken verbatim from the v2 plan §4.2. Frame advancement is
+// driven by a `Timer` scheduled on the main run loop (common mode), so it coexists
+// with `RunLoop.main.run()` and AppKit event handling without blocking the stdin
+// reader (which runs off the main actor).
 
 import AppKit
 
 final class PetWindow: NSPanel {
   let petView = PetView()
+  private var frameTimer: Timer?
 
-  init(image: NSImage) {
-    let size = PetView.fittingSize(for: image)
+  /// Build the panel and show the given clip's first frame. The window anchor is set
+  /// near the bottom-right of the main screen; position persistence (drag + LayoutStore)
+  /// is Step7.
+  init(clip: ResolvedClip) {
+    let size = PetView.fittingSize(for: clip.frames)
     super.init(
       contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.borderless, .nonactivatingPanel],
@@ -28,12 +35,9 @@ final class PetWindow: NSPanel {
     hidesOnDeactivate = false
     // —— end §4.2 attributes ——
 
-    petView.image = image
     petView.frame = NSRect(origin: .zero, size: size)
     contentView = petView
 
-    // Step4: anchor near the bottom-right of the main screen. Position persistence
-    // (drag + LayoutStore) is Step7.
     if let screen = NSScreen.main {
       let origin = NSPoint(
         x: screen.visibleFrame.maxX - size.width - 24,
@@ -42,5 +46,26 @@ final class PetWindow: NSPanel {
       setFrameOrigin(origin)
     }
     orderFrontRegardless()
+
+    showClip(clip)
+  }
+
+  /// Switch to a new clip and (re)start the frame timer. Single-frame clips need no
+  /// timer. The timer fires on the main run loop's common modes, so it keeps ticking
+  /// while the panel is shown and does not starve the stdin reader.
+  func showClip(_ clip: ResolvedClip) {
+    frameTimer?.invalidate()
+    frameTimer = nil
+
+    petView.setClip(clip.frames, loops: clip.loops)
+    guard clip.frames.count > 1 else { return }
+
+    let interval = max(1.0 / 60.0, Double(clip.frameMs) / 1000.0)
+    frameTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
+      [weak self] _ in
+      // The timer is scheduled on the main run loop, so it fires on the main thread.
+      // Bridge into the main actor to touch the main-isolated PetView safely.
+      MainActor.assumeIsolated { self?.petView.advanceFrame() }
+    }
   }
 }

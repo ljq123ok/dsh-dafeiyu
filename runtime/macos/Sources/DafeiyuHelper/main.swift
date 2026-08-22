@@ -83,20 +83,48 @@ for argument in CommandLine.arguments.dropFirst() {
 // visible clip; Step5 will branch on `stateMap` here.
 let companionModel = CompanionModel()
 
-// MARK: - Visual mode (Step4)
+// MARK: - Visual mode (Step5)
 
-// In visual mode (no `--headless`) show the idle PNG in a transparent panel. On any
-// asset failure, fail fast with exit code 2 — never a silent fallback image.
+// In visual mode (no `--headless`) show the idle clip in a transparent panel. On any
+// asset failure (manifest, idle clip, or first frame missing) fail fast with exit code 2
+// — never a silent fallback image. The companion model and window are retained for the
+// lifetime of the run loop.
+var manifestStore: ManifestStore?
+var petWindow: PetWindow?
+
 if !isHeadless {
   do {
     let store = try ManifestStore(assetRootOverride: assetRootOverride)
-    let image = try store.idleImage()
-    let window = PetWindow(image: image)
-    _ = window // retain the window for the lifetime of the run loop
-    logToStderr("visual mode: idle panel shown")
+    manifestStore = store
+    let idle = try store.idleClip()
+    let window = PetWindow(clip: idle)
+    petWindow = window // retain the window for the lifetime of the run loop
+    logToStderr("visual mode: idle clip shown")
   } catch {
     logToStderr("failed to load idle asset (manifest or PNG missing): \(error); exiting with code 2")
     exit(2)
+  }
+}
+
+/// Resolve and display the clip for the model's current active state. On a missing
+/// base clip at startup this fails fast (exit 2); when switching at runtime, a missing
+/// non-base clip is logged and we fall back to the idle clip rather than crashing.
+@MainActor
+func showActiveClip(store: ManifestStore, window: PetWindow, fatalIfMissing: Bool) {
+  do {
+    guard let clip = try store.clip(forState: companionModel.activeState, activity: companionModel.activeActivity) else {
+      throw ManifestError.clipNotFound
+    }
+    window.showClip(clip)
+  } catch {
+    if fatalIfMissing {
+      logToStderr("failed to load active clip: \(error); exiting with code 2")
+      exit(2)
+    }
+    // Runtime switch to a clip whose assets are missing: keep the current frame and
+    // revert to idle so the pet never disappears.
+    logToStderr("cannot load clip for \(companionModel.activeState); falling back to idle")
+    if let idle = try? store.idleClip() { window.showClip(idle) }
   }
 }
 
@@ -167,12 +195,29 @@ func handleLine(_ lineData: Data) {
     logToStderr("shutdown received, exiting")
     exit(0)
   case .state:
-    // Step4: store the state only; no clip swap yet (Step5 will branch on stateMap).
+    // Step5: switch the visible clip to match the state. `activity` refines WORKING.
     if let state = object["state"] as? String {
-      companionModel.applyState(state)
+      companionModel.applyState(state, activity: object["activity"] as? String)
+      if let store = manifestStore, let window = petWindow {
+        showActiveClip(store: store, window: window, fatalIfMissing: false)
+      }
     }
-  case .ready, .pong, .closed, .hello, .config, .task, .tasks, .pulse:
-    // Step2 does not render; legal messages are acknowledged by keeping the pipe open.
+  case .pulse:
+    // Step5: a transient override (e.g. SUCCESS/ERROR) shown for `ttlMs`, then the
+    // model falls back to `resumeState ?? baseState`.
+    if let state = object["state"] as? String {
+      companionModel.applyPulse(
+        state,
+        activity: object["activity"] as? String,
+        ttlMs: object["ttlMs"] as? Int,
+        resumeState: object["resumeState"] as? String
+      )
+      if let store = manifestStore, let window = petWindow {
+        showActiveClip(store: store, window: window, fatalIfMissing: false)
+      }
+    }
+  case .ready, .pong, .closed, .hello, .config, .task, .tasks:
+    // Legal protocol messages not rendered here; acknowledged by keeping the pipe open.
     break
   }
 }

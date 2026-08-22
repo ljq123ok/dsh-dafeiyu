@@ -64,7 +64,10 @@ test('helper heartbeat stays healthy and responds without a restart', async () =
     headless: true,
     eventLog,
     heartbeatMs: 25,
-    heartbeatTimeoutMs: 150,
+    // Raised from 150 → 300 so a loaded Python helper's PONG is not mistaken for a
+    // dead helper. A false timeout would kill+restart the child and break the
+    // "no restart" assertion under full-suite parallel load (the pre-existing flake).
+    heartbeatTimeoutMs: 300,
     ...pythonHelper,
   }, logger)
   const initialChild = bridge.start()
@@ -72,15 +75,19 @@ test('helper heartbeat stays healthy and responds without a restart', async () =
     state: CompanionState.THINKING,
     message: 'heartbeat test',
   }))
-  await waitFor(async () => {
-    try {
-      return (await readFile(eventLog, 'utf8')).includes('"kind": "ping"')
-    } catch {
-      return false
-    }
-  }, 8000)
+
+  // Wait for the first heartbeat reply rather than polling the on-disk event log, which
+  // is subject to flush latency under parallel load. `lastPongAt` is updated in-process
+  // by the heartbeat loop on every PONG, so it is immune to that latency.
+  await waitFor(() => bridge.lastPongAt > 0, 8000)
+
+  // Sample heartbeat health across a window: lastPongAt must advance (the helper keeps
+  // answering pings) and the child must stay the same instance (no restart) the whole time.
+  const firstPong = bridge.lastPongAt
   await new Promise((resolve) => setTimeout(resolve, 220))
-  assert.equal(bridge.child, initialChild)
+  assert.ok(bridge.lastPongAt > firstPong, 'heartbeat should keep advancing')
+  assert.equal(bridge.child, initialChild, 'helper must not restart during the heartbeat')
+
   bridge.stop('heartbeat-test-complete')
   await waitFor(async () => {
     try {

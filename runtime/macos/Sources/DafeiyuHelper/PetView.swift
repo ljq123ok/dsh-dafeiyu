@@ -27,6 +27,17 @@ final class PetView: NSView {
   /// Multi-task card list (nil or <2 entries hides the card).
   private var card: [TaskItem] = []
 
+  // MARK: - Step6 overlay layout
+
+  /// Width reserved to the right of the pet for the speech bubble, and height
+  /// reserved below the pet for the multi-task card. These are the single source
+  /// of truth shared with PetWindow, so the panel is always large enough that the
+  /// overlays land inside the window — visibility never depends on AppKit's
+  /// default non-clipping view behavior.
+  static let bubbleReservedWidth: CGFloat = 256
+  /// 5 card rows (5 × 22) + 12 padding + 12 bottom margin.
+  static let cardReservedHeight: CGFloat = 134
+
   override var isOpaque: Bool { false }
 
   /// Replace the displayed clip. Resets the cursor to the first frame.
@@ -72,7 +83,17 @@ final class PetView: NSView {
   override func draw(_ dirtyRect: NSRect) {
     // No background fill: keep the panel transparent, only paint the PNG.
     guard let image = currentImage else { return }
-    image.draw(in: bounds)
+    // Step6: the pet is anchored just above the reserved card region (AppKit
+    // coordinates: origin bottom-left, y up). The overlays are drawn inside the
+    // view's own bounds, so nothing relies on AppKit's default non-clipping
+    // behavior to stay visible.
+    let petRect = NSRect(
+      x: 0,
+      y: Self.cardReservedHeight,
+      width: image.size.width,
+      height: image.size.height
+    )
+    image.draw(in: petRect)
 
     // Step6 overlays: bubble on the right side of the pet, task card below it.
     if let bubble {
@@ -86,7 +107,6 @@ final class PetView: NSView {
   // MARK: - Overlay drawing (pure AppKit; no third-party dependencies)
 
   private func drawBubble(_ info: TaskInfo, imageSize: NSSize) {
-    let bubbleOriginX = imageSize.width + 8
     let maxWidth: CGFloat = 240
     var lines: [NSAttributedString] = []
     if let message = info.message, !message.isEmpty {
@@ -106,7 +126,15 @@ final class PetView: NSView {
       textHeight += line.size().height
     }
     let bubbleHeight = max(34, textHeight + 16 + (progressBar != nil ? 12 : 0))
-    let bubbleRect = NSRect(x: bubbleOriginX, y: 12, width: maxWidth, height: bubbleHeight)
+    // Step6: bubble sits to the right of the pet, bottom-aligned with the pet's
+    // bottom edge (cardReservedHeight) plus a 12pt margin, so it stays inside the
+    // window's reserved bubble column (width ≤ bubbleReservedWidth).
+    let bubbleRect = NSRect(
+      x: imageSize.width + 8,
+      y: Self.cardReservedHeight + 12,
+      width: maxWidth,
+      height: bubbleHeight
+    )
 
     // Bubble background (semi-transparent dark so white text reads on any pet frame).
     let path = NSBezierPath(roundedRect: bubbleRect, xRadius: 10, yRadius: 10)
@@ -135,10 +163,18 @@ final class PetView: NSView {
 
   private func drawCard(_ items: [TaskItem]) {
     // Card below the pet: one row per task, first (highest priority) highlighted.
+    // Step6: the card top hugs the pet's bottom edge (cardReservedHeight) and the
+    // card grows downward, so the whole card stays within the window (y ≥ 0) —
+    // previously the rect used a negative y and was drawn outside the panel.
     let rowHeight: CGFloat = 22
     let cardWidth: CGFloat = 260
     let cardHeight = CGFloat(min(items.count, 5)) * rowHeight + 12
-    let cardRect = NSRect(x: 0, y: -cardHeight - 8, width: cardWidth, height: cardHeight)
+    let cardRect = NSRect(
+      x: 0,
+      y: Self.cardReservedHeight - 8 - cardHeight,
+      width: cardWidth,
+      height: cardHeight
+    )
 
     let path = NSBezierPath(roundedRect: cardRect, xRadius: 10, yRadius: 10)
     NSColor(calibratedWhite: 0.12, alpha: 0.82).setFill()

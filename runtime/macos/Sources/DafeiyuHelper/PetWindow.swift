@@ -6,8 +6,10 @@
 // with `RunLoop.main.run()` and AppKit event handling without blocking the stdin
 // reader (which runs off the main actor).
 //
-// Step6 reserves extra width on the right of the pet for the speech bubble, so the
-// overlay is never clipped by the panel bounds.
+// Step6 reserves extra width on the right of the pet for the speech bubble and
+// extra height below the pet for the multi-task card, so the overlays are never
+// clipped by the panel bounds. The shared reservation constants live on PetView
+// (single source of truth for overlay layout).
 
 import AppKit
 
@@ -15,17 +17,14 @@ final class PetWindow: NSPanel {
   let petView = PetView()
   private var frameTimer: Timer?
 
-  /// Extra width reserved for the Step6 speech bubble (right of the pet).
-  static let bubbleReservedWidth: CGFloat = 256
-
   /// Build the panel and show the given clip's first frame. The window anchor is set
   /// near the bottom-right of the main screen; position persistence (drag + LayoutStore)
   /// is Step7.
   init(clip: ResolvedClip) {
     let petSize = PetView.fittingSize(for: clip.frames)
     let size = NSSize(
-      width: petSize.width + Self.bubbleReservedWidth,
-      height: petSize.height
+      width: petSize.width + PetView.bubbleReservedWidth,
+      height: petSize.height + PetView.cardReservedHeight
     )
     super.init(
       contentRect: NSRect(origin: .zero, size: size),
@@ -45,7 +44,10 @@ final class PetWindow: NSPanel {
     hidesOnDeactivate = false
     // —— end §4.2 attributes ——
 
-    petView.frame = NSRect(origin: .zero, size: petSize)
+    // Step6: the view covers the whole panel (pet + reserved bubble column on the
+    // right + reserved card row below), so every overlay is drawn inside the
+    // view's own bounds and the panel.
+    petView.frame = NSRect(origin: .zero, size: size)
     contentView = petView
 
     if let screen = NSScreen.main {

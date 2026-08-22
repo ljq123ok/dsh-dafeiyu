@@ -30,6 +30,12 @@ final class CompanionModel {
   /// Timer that clears the pulse override when it expires.
   private var pulseTimer: Timer?
 
+  /// Hook invoked whenever the active clip should be re-resolved and redrawn — after a
+  /// STATE change or a pulse expiry. main.swift wires this to `showActiveClip` so the
+  /// window follows the model without the model holding view/window references (F4: a
+  /// pulse that expires must redraw to the base clip, not leave the pulse frame on screen).
+  var onActiveClipChanged: (() -> Void)?
+
   /// The state/activity that should currently be rendered: pulse wins over base.
   var activeState: String { pulseState ?? baseState }
   var activeActivity: String? {
@@ -43,7 +49,8 @@ final class CompanionModel {
     baseState = state
     baseActivity = activity
     // A pulse in flight keeps displaying its override; once it expires the window
-    // will re-resolve to this new base.
+    // will re-resolve to this new base via `onActiveClipChanged`.
+    onActiveClipChanged?()
   }
 
   /// Apply a transient PULSE message. Shows `state` immediately and schedules a
@@ -68,5 +75,8 @@ final class CompanionModel {
     if let resume = resumeState, !resume.isEmpty {
       baseState = resume
     }
+    // F4: redraw immediately so the pulse frame is replaced by the base clip now,
+    // without waiting for the next STATE/PULSE message.
+    onActiveClipChanged?()
   }
 }

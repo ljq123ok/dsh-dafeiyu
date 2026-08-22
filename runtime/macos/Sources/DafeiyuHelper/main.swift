@@ -99,6 +99,12 @@ if !isHeadless {
     let idle = try store.idleClip()
     let window = PetWindow(clip: idle)
     petWindow = window // retain the window for the lifetime of the run loop
+    // Wire the model→window redraw hook (F4: a pulse expiry must re-resolve the base
+    // clip). In headless mode this closure stays nil, so the hook is a no-op there.
+    companionModel.onActiveClipChanged = { [weak store, weak window] in
+      guard let s = store, let w = window else { return }
+      showActiveClip(store: s, window: w, fatalIfMissing: false)
+    }
     logToStderr("visual mode: idle clip shown")
   } catch {
     logToStderr("failed to load idle asset (manifest or PNG missing): \(error); exiting with code 2")

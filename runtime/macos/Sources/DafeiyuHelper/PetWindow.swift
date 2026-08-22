@@ -1,10 +1,13 @@
-// PetWindow (Step5 of the macOS native refactor).
+// PetWindow (Step5/Step6 of the macOS native refactor).
 //
 // A transparent, borderless, always-on-top NSPanel that hosts an animated PetView.
 // Window attributes are taken verbatim from the v2 plan §4.2. Frame advancement is
 // driven by a `Timer` scheduled on the main run loop (common mode), so it coexists
 // with `RunLoop.main.run()` and AppKit event handling without blocking the stdin
 // reader (which runs off the main actor).
+//
+// Step6 reserves extra width on the right of the pet for the speech bubble, so the
+// overlay is never clipped by the panel bounds.
 
 import AppKit
 
@@ -12,11 +15,18 @@ final class PetWindow: NSPanel {
   let petView = PetView()
   private var frameTimer: Timer?
 
+  /// Extra width reserved for the Step6 speech bubble (right of the pet).
+  static let bubbleReservedWidth: CGFloat = 256
+
   /// Build the panel and show the given clip's first frame. The window anchor is set
   /// near the bottom-right of the main screen; position persistence (drag + LayoutStore)
   /// is Step7.
   init(clip: ResolvedClip) {
-    let size = PetView.fittingSize(for: clip.frames)
+    let petSize = PetView.fittingSize(for: clip.frames)
+    let size = NSSize(
+      width: petSize.width + Self.bubbleReservedWidth,
+      height: petSize.height
+    )
     super.init(
       contentRect: NSRect(origin: .zero, size: size),
       styleMask: [.borderless, .nonactivatingPanel],
@@ -35,7 +45,7 @@ final class PetWindow: NSPanel {
     hidesOnDeactivate = false
     // —— end §4.2 attributes ——
 
-    petView.frame = NSRect(origin: .zero, size: size)
+    petView.frame = NSRect(origin: .zero, size: petSize)
     contentView = petView
 
     if let screen = NSScreen.main {

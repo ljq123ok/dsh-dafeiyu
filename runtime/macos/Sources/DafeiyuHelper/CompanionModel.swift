@@ -1,15 +1,45 @@
-// CompanionModel (Step5 of the macOS native refactor).
+// CompanionModel (Step5/Step6 of the macOS native refactor).
 //
 // Owns the animation state machine. Two layers of state drive which clip is shown:
 //   - baseState / baseActivity: the steady state from the most recent STATE message.
 //   - pulseState: a transient override from a PULSE message (e.g. SUCCESS/ERROR),
 //     which expires after its TTL and falls back to the base (or the resume target).
 //
-// The model is the single source of truth; `activeState`/`activeActivity` is what the
-// window should be displaying right now. The protocol reader calls `applyState` /
-// `applyPulse`; the window then resolves the matching clip via ManifestStore.
+// Step6 adds the task/bubble state: the model consumes the TASK/TASKS messages (and
+// the task/progress/detail fields that STATE also carries) and exposes them to the
+// view for bubble and multi-task-card rendering. The model remains the single source
+// of truth; the protocol reader calls `applyState`/`applyPulse`/`applyTask`/
+// `applyTasks`; the window then resolves the matching clip via ManifestStore and the
+// view draws the bubble from `currentTask`/`taskList`.
 
 import Foundation
+
+/// A single task shown in the bubble: title, optional todo progress, and the copy
+/// (message/detail) that the Node layer already computed (Swift never invents copy).
+struct TaskInfo {
+  var title: String?
+  var completed: Int?
+  var total: Int?
+  var message: String?
+  var detail: String?
+  var project: String?
+
+  /// Convenience: `true` when there is anything worth rendering.
+  var isEmpty: Bool {
+    title == nil && completed == nil && total == nil && message == nil && detail == nil && project == nil
+  }
+}
+
+/// One entry of the multi-task card (from a TASKS message; ordering already decided
+/// by the reducer's priority sort — Swift keeps the order as received).
+struct TaskItem {
+  var sessionId: String
+  var state: String?
+  var project: String?
+  var title: String?
+  var message: String?
+  var detail: String?
+}
 
 /// The model is only ever touched from the main actor (the protocol reader's
 /// `handleLine`, which is `@MainActor`), so it is explicitly main-actor-isolated.
@@ -30,6 +60,15 @@ final class CompanionModel {
   /// Timer that clears the pulse override when it expires.
   private var pulseTimer: Timer?
 
+  /// Step6: the current task for the single-task bubble (nil when idle / no task).
+  /// Updated by `applyTask` (TASK message) and by `applyState` (STATE also carries
+  /// task/progress/detail/payload.message — reducer L487-495).
+  private(set) var currentTask: TaskInfo?
+
+  /// Step6: the multi-task card list (from TASKS messages). The reducer clears it by
+  /// sending `{ tasks: [] }` when fewer than two tasks are active, which maps to nil.
+  private(set) var taskList: [TaskItem]?
+
   /// Hook invoked whenever the active clip should be re-resolved and redrawn — after a
   /// STATE change or a pulse expiry. main.swift wires this to `showActiveClip` so the
   /// window follows the model without the model holding view/window references (F4: a
@@ -45,11 +84,34 @@ final class CompanionModel {
 
   /// Apply a steady STATE message. If no pulse is active, the change takes effect
   /// immediately (the window re-resolves the clip from `activeState/activeActivity`).
-  func applyState(_ state: String, activity: String? = nil) {
+  /// Step6: STATE also carries task/progress/detail/payload.message, so the bubble
+  /// data is refreshed here too (otherwise a state change would leave stale bubble copy).
+  func applyState(_ state: String, activity: String? = nil,
+                  task: TaskInfo? = nil) {
     baseState = state
     baseActivity = activity
+    if let task { currentTask = task.isEmpty ? nil : task }
     // A pulse in flight keeps displaying its override; once it expires the window
     // will re-resolve to this new base via `onActiveClipChanged`.
+    onActiveClipChanged?()
+  }
+
+  /// Step6: apply a TASK message (todo progress update). `task == nil` (or empty)
+  /// clears the single-task bubble.
+  func applyTask(_ task: TaskInfo?) {
+    if let task {
+      currentTask = task.isEmpty ? nil : task
+    } else {
+      currentTask = nil
+    }
+    onActiveClipChanged?()
+  }
+
+  /// Step6: apply a TASKS message. An empty list (the reducer's `{ tasks: [] }` clear)
+  /// hides the multi-task card; a list of one is also kept (the reducer only sends
+  /// TASKS when ≥2 are active, but tolerating one is harmless).
+  func applyTasks(_ tasks: [TaskItem]) {
+    taskList = tasks.isEmpty ? nil : tasks
     onActiveClipChanged?()
   }
 

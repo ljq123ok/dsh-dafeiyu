@@ -202,8 +202,15 @@ func handleLine(_ lineData: Data) {
     exit(0)
   case .state:
     // Step5: switch the visible clip to match the state. `activity` refines WORKING.
+    // Step6: STATE also carries task/progress/detail/payload.message (reducer L487-495),
+    // so the bubble data is refreshed together with the state.
     if let state = object["state"] as? String {
-      companionModel.applyState(state, activity: object["activity"] as? String)
+      companionModel.applyState(
+        state,
+        activity: object["activity"] as? String,
+        task: taskInfo(from: object)
+      )
+      syncOverlays()
       if let store = manifestStore, let window = petWindow {
         showActiveClip(store: store, window: window, fatalIfMissing: false)
       }
@@ -222,8 +229,60 @@ func handleLine(_ lineData: Data) {
         showActiveClip(store: store, window: window, fatalIfMissing: false)
       }
     }
-  case .ready, .pong, .closed, .hello, .config, .task, .tasks:
+  case .task:
+    // Step6: a todo progress update. Empty `task` clears the single-task bubble.
+    companionModel.applyTask(taskInfo(from: object))
+    syncOverlays()
+  case .tasks:
+    // Step6: multi-task card list. `{ tasks: [] }` (fewer than two active tasks)
+    // clears the card.
+    let rawTasks = object["tasks"] as? [[String: Any]] ?? []
+    companionModel.applyTasks(rawTasks.map(TaskItem.init(dictionary:)))
+    syncOverlays()
+  case .ready, .pong, .closed, .hello, .config:
     // Legal protocol messages not rendered here; acknowledged by keeping the pipe open.
     break
+  }
+}
+
+/// Build the Step6 bubble info from a message payload. The reducer sends
+/// task/progress{completed,total}/project/message/detail on both TASK and STATE.
+@MainActor
+func taskInfo(from object: [String: Any]) -> TaskInfo? {
+  let progress = object["progress"] as? [String: Any]
+  let task = object["task"] as? String
+  let message = object["message"] as? String
+  let detail = object["detail"] as? String
+  let project = object["project"] as? String
+  // When the payload carries none of the bubble fields, treat it as no bubble
+  // (the reducer sends `task`/`message`/`detail` on TASK; STATE may omit task).
+  let info = TaskInfo(
+    title: task,
+    completed: progress?["completed"] as? Int,
+    total: progress?["total"] as? Int,
+    message: message,
+    detail: detail,
+    project: project
+  )
+  return info.isEmpty ? nil : info
+}
+
+/// Push the current bubble/card state from the model into the window's view.
+@MainActor
+func syncOverlays() {
+  guard let window = petWindow else { return }
+  window.petView.setBubble(companionModel.currentTask)
+  window.petView.setCard(companionModel.taskList)
+}
+
+/// Parse one TASKS entry into a TaskItem (all fields optional except sessionId).
+extension TaskItem {
+  init(dictionary: [String: Any]) {
+    sessionId = dictionary["sessionId"] as? String ?? ""
+    state = dictionary["state"] as? String
+    project = dictionary["project"] as? String
+    title = dictionary["task"] as? String
+    message = dictionary["message"] as? String
+    detail = dictionary["detail"] as? String
   }
 }

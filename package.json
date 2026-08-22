@@ -34,7 +34,13 @@
     "LICENSE"
   ],
   "cpu": [
-    "x64"
+    "x64",
+    "arm64"
+  ],
+  "os": [
+    "win32",
+    "linux",
+    "darwin"
   ],
   "engines": {
     "node": ">=22.19"
@@ -50,6 +56,8 @@
     "helper:headless": "py -3 runtime/helper.py --headless",
     "helper:visual": "py -3 runtime/helper.py",
     "build:helper:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1",
+    "build:helper:mac": "swift build --package-path runtime/macos -c release --arch arm64 && mkdir -p runtime/bin/darwin-arm64 && cp runtime/macos/.build/release/DafeiyuHelper runtime/bin/darwin-arm64/dsh-dafeiyu-helper && chmod +x runtime/bin/darwin-arm64/dsh-dafeiyu-helper",
+    "test:helper:mac:headless": "runtime/bin/darwin-arm64/dsh-dafeiyu-helper --headless",
     "test:helper:packaged": "node scripts/test-packaged-helper.mjs"
   },
   "dsh": {

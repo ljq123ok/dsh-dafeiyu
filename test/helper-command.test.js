@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { defaultCmdExe, resolveHelperLaunch } from '../src/helper-process.js'
+import {
+  bundledDarwinArm64HelperPath,
+  defaultCmdExe,
+  resolveHelperLaunch,
+} from '../src/helper-process.js'
 
 const bundledPath = '/package/runtime/bin/win32-x64/dsh-dafeiyu-helper.exe'
+const darwinArm64Path = '/package/runtime/bin/darwin-arm64/dsh-dafeiyu-helper'
 const helperPath = '/package/runtime/helper.py'
 
 function resolve(overrides = {}) {
@@ -72,4 +77,63 @@ test('missing bundled helper falls back to the configured Python', () => {
     command: '/opt/dsh/python',
     args: [helperPath],
   })
+})
+
+// --- Apple Silicon macOS (Swift/AppKit helper) ---
+
+test('Apple Silicon macOS launches the bundled Swift helper directly in headless', () => {
+  assert.deepEqual(resolveHelperLaunch({
+    platform: 'darwin',
+    arch: 'arm64',
+    isWslEnv: false,
+    bundledPath,
+    darwinArm64Path,
+    helperPath,
+    fileExists: (p) => p === darwinArm64Path,
+    headless: true,
+  }), { command: darwinArm64Path, args: ['--headless'] })
+})
+
+test('Apple Silicon macOS launches the bundled Swift helper with no args in visual mode', () => {
+  assert.deepEqual(resolveHelperLaunch({
+    platform: 'darwin',
+    arch: 'arm64',
+    isWslEnv: false,
+    bundledPath,
+    darwinArm64Path,
+    helperPath,
+    fileExists: (p) => p === darwinArm64Path,
+    headless: false,
+  }), { command: darwinArm64Path, args: [] })
+})
+
+test('Intel macOS refuses to start with a clear Apple-Silicon-only error', () => {
+  assert.throws(
+    () => resolveHelperLaunch({
+      platform: 'darwin',
+      arch: 'x64',
+      isWslEnv: false,
+      bundledPath,
+      darwinArm64Path,
+      helperPath,
+      fileExists: () => false,
+    }),
+    /only supports Apple Silicon \(darwin-arm64\)/,
+  )
+})
+
+test('Apple Silicon macOS without a built helper refuses to start', () => {
+  // No Intel fallback and no Python fallback: an unbuilt arm64 helper is a hard error.
+  assert.throws(
+    () => resolveHelperLaunch({
+      platform: 'darwin',
+      arch: 'arm64',
+      isWslEnv: false,
+      bundledPath,
+      darwinArm64Path,
+      helperPath,
+      fileExists: () => false,
+    }),
+    /only supports Apple Silicon \(darwin-arm64\)/,
+  )
 })

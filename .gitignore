@@ -10,3 +10,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .dsh-phase0/
+
+# This project is locked with pnpm (see pnpm-lock.yaml). npm install is used only
+# locally to validate the arm64 helper; keep its generated lockfile out of git.
+package-lock.json

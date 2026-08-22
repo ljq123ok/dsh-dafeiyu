@@ -5,6 +5,17 @@ import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import test from 'node:test'
 import { apply, inject } from '../src/index.js'
+import { defaultHelperPath } from '../src/helper-process.js'
+
+// The plugin-integration tests below assert the full companion protocol sequence
+// (hello/state/pulse/config + --event-log recording) that the Swift helper
+// (Step2) does not implement yet. They run against the Python helper so the
+// assertions stay real; the Swift helper path is covered by helper-lifecycle.
+const pythonHelper = {
+  headless: true,
+  command: process.env.DSH_DAFEIYU_PYTHON || 'python3',
+  args: [defaultHelperPath],
+}
 
 test('plugin declares the service dependencies it actually consumes', () => {
   assert.ok(inject.includes('settings'), 'settings is a real hard dependency for live config')
@@ -42,7 +53,7 @@ test('plugin forwards DSH-shaped session events and owns helper shutdown', async
     },
   }
 
-  apply(ctx, { helper: { headless: true, eventLog } })
+  apply(ctx, { helper: { ...pythonHelper, eventLog } })
   const session = { header: { id: 'phase0-real-shape' } }
   listeners.get('session/event')(session, { type: 'turn/start', seq: 1, data: { turn: 1 } })
   listeners.get('session/event')(session, {
@@ -116,7 +127,7 @@ test('live settings keep the active project state without restarting the helper'
     },
   }
 
-  apply(ctx, { helper: { headless: true, eventLog } })
+  apply(ctx, { helper: { ...pythonHelper, eventLog } })
   const activeSession = { header: { id: 'live-settings', cwd: 'D:\\work\\active-project' } }
   listeners.get('session/event')(activeSession, { type: 'turn/start', seq: 1, data: { turn: 1 } })
   listeners.get('session/event')(activeSession, {

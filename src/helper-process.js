@@ -12,6 +12,8 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const defaultHelperPath = resolve(here, '..', 'runtime', 'helper.py')
 const bundledHelperPath = resolve(here, '..', 'runtime', 'bin', 'win32-x64', 'dsh-dafeiyu-helper.exe')
+// Apple Silicon macOS helper (Swift/AppKit). Built locally via `npm run build:helper:mac`.
+const bundledDarwinArm64HelperPath = resolve(here, '..', 'runtime', 'bin', 'darwin-arm64', 'dsh-dafeiyu-helper')
 
 function isWsl() {
   if (process.platform !== 'linux') return false
@@ -28,6 +30,16 @@ function isWsl() {
 
 function shouldUseBundledHelper() {
   return (process.platform === 'win32' || isWsl()) && existsSync(bundledHelperPath)
+}
+
+// Apple Silicon macOS only: the Swift helper is bundled at runtime/bin/darwin-arm64.
+// Intel macOS (darwin-x64) and Rosetta are explicitly unsupported.
+function shouldUseBundledDarwinArm64Helper() {
+  return (
+    process.platform === 'darwin' &&
+    process.arch === 'arm64' &&
+    existsSync(bundledDarwinArm64HelperPath)
+  )
 }
 
 function toWindowsPath(path) {
@@ -54,8 +66,10 @@ function defaultWslPath(...args) {
 
 function resolveHelperLaunch({
   platform,
+  arch = process.arch,
   isWslEnv,
   bundledPath,
+  darwinArm64Path = bundledDarwinArm64HelperPath,
   helperPath,
   pythonEnv,
   headless = false,
@@ -63,6 +77,17 @@ function resolveHelperLaunch({
   windowsPath = toWindowsPath,
   cmdExe = defaultCmdExe,
 }) {
+  // Apple Silicon macOS: launch the bundled Swift helper directly. This is the
+  // top-priority branch. Intel macOS (darwin-x64) or an unbuilt arm64 helper
+  // refuse to start with a clear error — there is no Python/Intel fallback.
+  if (platform === 'darwin') {
+    if (arch === 'arm64' && fileExists(darwinArm64Path)) {
+      return { command: darwinArm64Path, args: headless ? ['--headless'] : [] }
+    }
+    throw new Error(
+      'dsh-dafeiyu mac helper only supports Apple Silicon (darwin-arm64)',
+    )
+  }
   if (platform === 'win32' && fileExists(bundledPath)) {
     return { command: bundledPath, args: [] }
   }
@@ -83,8 +108,10 @@ function resolveHelperLaunch({
 function defaultLaunch(headless = false) {
   return resolveHelperLaunch({
     platform: process.platform,
+    arch: process.arch,
     isWslEnv: isWsl(),
     bundledPath: bundledHelperPath,
+    darwinArm64Path: bundledDarwinArm64HelperPath,
     helperPath: defaultHelperPath,
     pythonEnv: process.env.DSH_DAFEIYU_PYTHON,
     headless,
@@ -97,6 +124,8 @@ function defaultCommand(headless = false) {
 
 function defaultArgs(command, helperPath) {
   if (command === bundledHelperPath) return []
+  // Explicit override to the bundled Swift helper: never append the Python path.
+  if (command === bundledDarwinArm64HelperPath) return []
   if (process.platform === 'win32' && /(^|[\\/])py(?:\.exe)?$/i.test(command)) {
     return ['-3', helperPath]
   }
@@ -354,6 +383,7 @@ export class HelperProcess {
 
 export {
   bundledHelperPath,
+  bundledDarwinArm64HelperPath,
   defaultHelperPath,
   defaultArgs,
   defaultCmdExe,
@@ -362,5 +392,6 @@ export {
   isWsl,
   resolveHelperLaunch,
   shouldUseBundledHelper,
+  shouldUseBundledDarwinArm64Helper,
   toWindowsPath,
 }

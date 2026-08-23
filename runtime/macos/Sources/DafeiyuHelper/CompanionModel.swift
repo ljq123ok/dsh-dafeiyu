@@ -18,6 +18,14 @@
 // bubble/card with a given state should be shown — via `shouldShowBubble`. Main.swift
 // feeds the initial values from `DSH_DAFEIYU_*` env at startup and applies live CONFIG
 // messages through `applyConfig`.
+//
+// Step8 adds notification snapshots: `applyState`/`applyPulse` also store the
+// reducer-computed `message`/`detail` (stateMessage/stateDetail and
+// pulseMessage/pulseDetail) so main.swift can read them for the desktop
+// notification. These fields never participate in drawing — the bubble/card
+// copy still comes from `currentTask`/`taskList`. Whether anything is notified
+// is decided in main.swift (deliver only for SUCCESS/ERROR, only in visual
+// mode); the model never decides that.
 
 import Foundation
 
@@ -63,6 +71,16 @@ final class CompanionModel {
   /// Activity refinement for the pulse (preserved so a WORKING+activity pulse restores
   /// the same granularity on expiry — t13 F1).
   private(set) var pulseActivity: String?
+
+  /// Step8: message/detail snapshot from the latest PULSE (reducer-computed copy;
+  /// notification source only — never used for drawing).
+  private(set) var pulseMessage: String?
+  private(set) var pulseDetail: String?
+
+  /// Step8: message/detail snapshot from the latest STATE (reducer-computed copy;
+  /// notification source only — never used for drawing).
+  private(set) var stateMessage: String?
+  private(set) var stateDetail: String?
 
   /// Timer that clears the pulse override when it expires.
   private var pulseTimer: Timer?
@@ -160,10 +178,14 @@ final class CompanionModel {
   /// immediately (the window re-resolves the clip from `activeState/activeActivity`).
   /// Step6: STATE also carries task/progress/detail/payload.message, so the bubble
   /// data is refreshed here too (otherwise a state change would leave stale bubble copy).
+  /// Step8: the reducer-computed `message`/`detail` are snapshotted for the desktop
+  /// notification (never used for drawing).
   func applyState(_ state: String, activity: String? = nil,
-                  task: TaskInfo? = nil) {
+                  task: TaskInfo? = nil, message: String? = nil, detail: String? = nil) {
     baseState = state
     baseActivity = activity
+    stateMessage = message
+    stateDetail = detail
     if let task { currentTask = task.isEmpty ? nil : task }
     // A pulse in flight keeps displaying its override; once it expires the window
     // will re-resolve to this new base via `onActiveClipChanged`.
@@ -191,9 +213,14 @@ final class CompanionModel {
 
   /// Apply a transient PULSE message. Shows `state` immediately and schedules a
   /// fallback to `resumeState ?? baseState` after `ttlMs` (default 1800 ms).
-  func applyPulse(_ state: String, activity: String? = nil, ttlMs: Int? = nil, resumeState: String? = nil) {
+  /// Step8: the reducer-computed `message`/`detail` are snapshotted for the desktop
+  /// notification (never used for drawing).
+  func applyPulse(_ state: String, activity: String? = nil, ttlMs: Int? = nil, resumeState: String? = nil,
+                  message: String? = nil, detail: String? = nil) {
     pulseState = state
     pulseActivity = activity
+    pulseMessage = message
+    pulseDetail = detail
     pulseTimer?.invalidate()
     let ttl = Double(ttlMs ?? 1800) / 1000.0
     pulseTimer = Timer.scheduledTimer(withTimeInterval: ttl, repeats: false) {
@@ -205,9 +232,12 @@ final class CompanionModel {
 
   /// Clear the pulse override. After this the window re-resolves to
   /// `resumeState ?? baseState` (preserving base activity for WORKING).
+  /// Step8: the notification snapshot is cleared alongside the pulse override.
   private func clearPulse(resumeState: String?) {
     pulseState = nil
     pulseActivity = nil
+    pulseMessage = nil
+    pulseDetail = nil
     if let resume = resumeState, !resume.isEmpty {
       baseState = resume
     }

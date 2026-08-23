@@ -9,6 +9,13 @@
 // dragged window position via LayoutStore. All of it lives in the `!isHeadless`
 // branch — the headless protocol path stays byte-for-byte identical to M1.
 //
+// Step8 adds system notifications: SUCCESS/ERROR from PULSE (and STATE) go to the
+// macOS user notification center via DSHNotifier. The reducer-computed
+// `message`/`detail` are threaded through to the model (notification snapshots)
+// and used as the notification body — Swift never generates copy. Delivery is
+// gated on `!isHeadless`, deduplicated by (state, message, detail), and failure
+// (no permission / send error) is stderr-only: never a UI pop-up, never an exit.
+//
 // Protocol invariants (must hold in every build of this helper):
 //   1. The first line written to stdout is a `ready` message (protocolVersion: 1).
 //   2. A `ping` message is answered with a `pong` message.
@@ -51,6 +58,33 @@ func writeJSON<T: Encodable>(_ value: T) {
 
 func logToStderr(_ message: String) {
   stderrHandle.write(Data("dsh-dafeiyu-helper: \(message)\n".utf8))
+}
+
+// MARK: - Step8 notifications
+
+/// Last delivered completion notification, keyed by (state, message, detail).
+/// Guards against double-notifying the same completion — the reducer emits
+/// SUCCESS/ERROR as PULSE (and can also emit ERROR as STATE on an abnormal turn
+/// end); a PULSE immediately followed by a STATE with identical copy must not
+/// produce two banners. Distinct events (different copy/state) still notify.
+private var lastNotificationKey: String?
+
+/// Deliver a desktop notification for SUCCESS/ERROR completion states.
+///   - Only in visual mode (never in headless — the headless path does not touch
+///     notification code at all and stays byte-identical on stdout).
+///   - Only for SUCCESS/ERROR states (other states are not completion events).
+///   - Deduplicated by (state, message, detail) so a PULSE→STATE echo of the same
+///     completion does not double-notify.
+///   - All actual sending (permission check, request) lives in DSHNotifier and is
+///     stderr-only on failure; this function never blocks and never exits.
+@MainActor
+func notifyCompletionIfNeeded(state: String, message: String?, detail: String?) {
+  guard !isHeadless else { return }
+  guard state == "SUCCESS" || state == "ERROR" else { return }
+  let key = [state, message ?? "", detail ?? ""].joined(separator: "\u{1F}")
+  if key == lastNotificationKey { return }
+  lastNotificationKey = key
+  DSHNotifier.deliver(state: state, message: message, detail: detail)
 }
 
 // MARK: - Argument parsing
@@ -214,12 +248,19 @@ func handleLine(_ lineData: Data) {
     // Step5: switch the visible clip to match the state. `activity` refines WORKING.
     // Step6: STATE also carries task/progress/detail/payload.message (reducer L487-495),
     // so the bubble data is refreshed together with the state.
+    // Step8: message/detail are snapshotted by the model and, for SUCCESS/ERROR,
+    // trigger the desktop notification (visual mode only, deduplicated).
     if let state = object["state"] as? String {
+      let message = object["message"] as? String
+      let detail = object["detail"] as? String
       companionModel.applyState(
         state,
         activity: object["activity"] as? String,
-        task: taskInfo(from: object)
+        task: taskInfo(from: object),
+        message: message,
+        detail: detail
       )
+      notifyCompletionIfNeeded(state: state, message: message, detail: detail)
       syncOverlays()
       if let store = manifestStore, let window = petWindow {
         showActiveClip(store: store, window: window, fatalIfMissing: false)
@@ -228,13 +269,21 @@ func handleLine(_ lineData: Data) {
   case .pulse:
     // Step5: a transient override (e.g. SUCCESS/ERROR) shown for `ttlMs`, then the
     // model falls back to `resumeState ?? baseState`.
+    // Step8: message/detail are snapshotted by the model and SUCCESS/ERROR trigger
+    // the desktop notification (visual mode only, deduplicated). This is the main
+    // notification channel — the reducer sends SUCCESS/ERROR as PULSE (L317/406).
     if let state = object["state"] as? String {
+      let message = object["message"] as? String
+      let detail = object["detail"] as? String
       companionModel.applyPulse(
         state,
         activity: object["activity"] as? String,
         ttlMs: object["ttlMs"] as? Int,
-        resumeState: object["resumeState"] as? String
+        resumeState: object["resumeState"] as? String,
+        message: message,
+        detail: detail
       )
+      notifyCompletionIfNeeded(state: state, message: message, detail: detail)
       if let store = manifestStore, let window = petWindow {
         showActiveClip(store: store, window: window, fatalIfMissing: false)
       }

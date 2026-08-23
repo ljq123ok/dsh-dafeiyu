@@ -2,7 +2,7 @@
 
 # DSH BigFish 🐋
 
-**A desktop companion that lives on Windows and reacts to real DeepSeek Harness activity.**
+**A desktop companion that lives on macOS and reacts to real DeepSeek Harness activity.**
 
 Enabled by DSH, owned by the DSH lifecycle, rendered on the desktop.
 
@@ -16,10 +16,11 @@ Enabled by DSH, owned by the DSH lifecycle, rendered on the desktop.
 
 DSH BigFish is not a standalone desktop-pet application. DSH enables the plugin, starts and
 stops its native Helper, and provides the Agent events that drive it. The transparent,
-frameless companion stays above other Windows apps, so you can see whether DSH is thinking,
-editing, testing, waiting, or finished while working in VS Code, a browser, or File Explorer.
+frameless companion stays above other apps on the macOS desktop, so you can see whether DSH is
+thinking, editing, testing, waiting, or finished while working in VS Code, a browser, or
+the Finder.
 
-> Current version: `0.1.2` · Windows / WSL2 Alpha
+> Current version: `0.2.0` · macOS (Apple Silicon) · First release
 
 ## Follow updates
 
@@ -28,21 +29,21 @@ editing, testing, waiting, or finished while working in VS Code, a browser, or F
   1. Open the repo and choose **Watch → Custom → Releases**;
   2. or subscribe to the Releases feed: <https://github.com/QCYTSN/dsh-dafeiyu/releases.atom>
 - To upgrade an installed copy: fully exit DSH, then run
-  ```powershell
+  ```bash
   dsh plugin --profile web update dsh-dafeiyu
   ```
   and start DSH again.
 
 ## What is it for?
 
-- **See DSH status away from the WebUI:** BigFish stays on top of the Windows desktop.
+- **See DSH status away from the WebUI:** BigFish stays on top of the macOS desktop.
 - **React to real Agent events:** it does not inspect the screen or mistake activity in other apps for DSH work.
 - **Show useful, compact context:** the card can display the project, current phase, active step, and real todo progress.
 - **Feel alive without becoming noisy:** thinking, searching, editing, commands, testing, waiting, success, and errors have distinct motion and friendly copy.
-- **Avoid a second app experience:** users do not launch the Helper, install Python, or configure another port.
+- **Avoid a second app experience:** users do not launch the Helper, install Xcode, or configure another port.
 
 If DSH has not emitted a structured todo list, BigFish shows reliable phases such as
-“Analysis,” “Implementation,” or “Verification” instead of inventing a percentage.
+"Analysis," "Implementation," or "Verification" instead of inventing a percentage.
 
 ## Status previews
 
@@ -85,15 +86,17 @@ When multiple tasks are active, the status bubble lists them at the same time.
 
 ## Requirements
 
-- Windows 10/11 x64, or WSL2 (runs the desktop Helper through Windows interop)
+- **macOS 14+ (Sonoma or newer), Apple Silicon (M1/M2/M3/M4 series)**
+- **Intel Mac (x86_64) is not supported** — the release carries only the `darwin-arm64` Helper binary
+- **Windows / Linux are not supported** — no desktop surface and no matching Helper
 - A working DeepSeek Harness WebUI installation
 - A DSH CLI that supports `plugin --profile web`
 - the stable `dsh-dafeiyu` from npm (or `dsh-dafeiyu@alpha` to try prereleases early), or a `.tgz` archive from GitHub Releases
 
-Regular users do **not** need Python or PySide6 and should not launch
-`dsh-dafeiyu-helper.exe` manually. The Windows Helper is bundled in the release archive.
+Regular users do **not** need Xcode command-line tools and should not launch the Helper
+manually. The macOS Helper is bundled in the release archive.
 
-The current Alpha build uses Simplified Chinese for the settings UI and desktop status copy.
+The current first release uses Simplified Chinese for the settings UI and desktop status copy.
 
 ## Install
 
@@ -104,31 +107,29 @@ installation or upgrade.
 
 ### 2. Install with one command
 
-Open PowerShell in your DSH installation directory, for example:
+Open Terminal in your DSH installation directory, for example:
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 ```
 
 Install the current stable release from npm:
 
-```powershell
+```bash
 pnpm exec dsh plugin --profile web add dsh-dafeiyu
 ```
 
 If `dsh` is already available globally, the command is simply:
 
-```powershell
+```bash
 dsh plugin --profile web add dsh-dafeiyu
 ```
 
 To try new features before they are stable, install from the `@alpha` tag instead:
 `pnpm exec dsh plugin --profile web add dsh-dafeiyu@alpha`.
 
-When DSH runs inside WSL2, run the same install command in the WSL terminal. The plugin
-launches the bundled Windows Helper through `cmd.exe`; no manual `chmod`, Python, or
-PySide6 installation is required inside WSL. The current target is WSL2 on Windows x64,
-not ordinary Linux, remote Linux, or containers.
+The current target is macOS (Apple Silicon); ordinary Linux, remote Linux, and containers
+are not desktop-display targets for this release.
 
 ### 3. GitHub Release fallback
 
@@ -140,8 +141,8 @@ dsh-dafeiyu-<version>.tgz
 
 Do not extract it. Install the downloaded archive from the DSH directory:
 
-```powershell
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<version>.tgz"
+```bash
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<version>.tgz"
 ```
 
 ### 4. Start DSH
@@ -173,8 +174,8 @@ The status card can show:
 
 - the project directory, such as `dsh-dafeiyu`
 - the current phase, such as Analysis, Implementation, or Verification
-- the active todo, such as “Improve project documentation”
-- real progress, such as “3/5 steps complete”
+- the active todo, such as "Improve project documentation"
+- real progress, such as "3/5 steps complete"
 - waiting, success, or error messages
 
 BigFish does not watch VS Code, browsers, or other apps and does not take screenshots. Only
@@ -197,24 +198,21 @@ DSH persists these settings, so a normal plugin update does not require reconfig
 ## Desktop interactions
 
 - **Drag:** move BigFish; its position is saved automatically.
-- **Click or double-click:** trigger brief head-pat, poke, or tail reactions, then return to the latest DSH state.
-- **Right-click:** change size, bubble size, reduce motion, open WebUI, hide for now, or close for this run.
-- **Hide for now:** hides the window without disabling the plugin.
-- **Close for this run:** closes the current Helper and suppresses restart until the next DSH launch.
+- Click/double-click interactions and a right-click menu are not implemented in the first release and will be added in later versions.
 
 ## Update
 
 An installed plugin does **not** change when new commits appear on GitHub. After a new version
 is published, fully exit DSH and update the npm stable package:
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 pnpm exec dsh plugin --profile web update dsh-dafeiyu
 ```
 
 Running the install command again also resolves the newest version behind the npm `latest` tag:
 
-```powershell
+```bash
 pnpm exec dsh plugin --profile web add dsh-dafeiyu
 ```
 
@@ -223,28 +221,28 @@ Users who opted into `@alpha` can run the same commands with the package name `d
 Users who installed from GitHub Releases can download the new `.tgz` and install it over the
 old version:
 
-```powershell
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<new-version>.tgz"
+```bash
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<new-version>.tgz"
 ```
 
-All three paths replace the plugin and bundled Windows Helper while retaining settings saved
+All three paths replace the plugin and bundled macOS Helper while retaining settings saved
 by DSH. See [Update and rollback](docs/UPDATING.md) for details.
 
 ## Roll back
 
 Fully exit DSH and install a previously saved release archive with the same `add` command:
 
-```powershell
-cd D:\DSH
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<old-version>.tgz"
+```bash
+cd ~/DSH
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<old-version>.tgz"
 ```
 
 ## Uninstall
 
 Fully exit DSH, then run:
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 pnpm exec dsh plugin --profile web remove dsh-dafeiyu
 ```
 
@@ -258,8 +256,9 @@ an inactive copy of historical settings; it does not start a process or open a p
 
 1. Confirm that you installed into `--profile web`.
 2. Fully stop and restart the DSH Host.
-3. Open “Settings → Plugins → Plugin configuration” and confirm that BigFish is enabled.
-4. Use the Windows x64 release archive. A source-only clone may not contain the prebuilt Helper.
+3. Open "Settings → Plugins → Plugin configuration" and confirm that BigFish is enabled.
+4. Confirm macOS is Apple Silicon (M1/M2/M3/M4) and the release archive contains the `darwin-arm64` Helper.
+5. Open "System Settings → Privacy & Security → Accessibility" and confirm DSH is authorized (BigFish needs always-on-top window permission).
 
 </details>
 
@@ -274,16 +273,22 @@ backend is still alive and exits when the Host actually stops.
 <details>
 <summary><strong>Why is there no numeric progress?</strong></summary>
 
-The plugin can calculate “3/5 steps complete” only when DSH emits a structured todo list.
+The plugin can calculate "3/5 steps complete" only when DSH emits a structured todo list.
 Without real progress data, the card shows the current phase instead of inventing a percentage.
 
 </details>
 
 <details>
-<summary><strong>Why does BigFish not restart after “Close for this run”?</strong></summary>
+<summary><strong>No system notification on task completion/error</strong></summary>
 
-That command intentionally suppresses automatic restart for the current DSH run. Fully restart
-DSH to bring it back. To disable it permanently, turn off “Enable BigFish” in DSH settings.
+BigFish sends completion and error notifications through the macOS User Notification Center.
+You need to grant notification permission in **System Settings → Privacy & Security →
+Notifications** on the first DSH launch (the system shows a one-time authorization prompt).
+
+If permission is not granted, BigFish still displays status normally — it just does not show
+notification banners. The Helper logs "notification permission not granted" to stderr. The
+first npm-distributed release ships as a bare command-line binary without an app bundle
+identity; for reliable banner notifications, a future `.app` distribution form is recommended.
 
 </details>
 
@@ -298,25 +303,17 @@ DSH to bring it back. To disable it permanently, turn off “Enable BigFish” i
 
 ## Development and tests
 
-```powershell
+```bash
 pnpm install
 npm test
-py -3 -m unittest discover -s runtime/tests -t .
+npm run build:helper:mac
+npm run test:helper:mac:headless
 ```
 
-Developers can run the source Helper directly, but regular users should not:
+Developers can run the source Helper directly (debugging only); regular users should not:
 
-```powershell
-py -3 -m pip install -r requirements.txt
-py -3 runtime\helper.py
-```
-
-Build the Windows Helper:
-
-```powershell
-python -m pip install -r requirements.txt pyinstaller
-$env:DSH_DAFEIYU_BUILD_PYTHON = (Get-Command python).Source
-npm run build:helper:windows
+```bash
+swift run --package-path runtime/macos --target DafeiyuHelper -- --headless
 ```
 
 ## More documentation
@@ -324,7 +321,7 @@ npm run build:helper:windows
 - [Product scope and trade-offs](docs/PRODUCT_SCOPE.md)
 - [Execution plan](docs/EXECUTION_PLAN.md)
 - [Compatibility spike](docs/PHASE0.md)
-- [Windows acceptance and performance](docs/ACCEPTANCE.md)
+- [Acceptance notes](docs/ACCEPTANCE.md)
 - [Update, rollback, and uninstall](docs/UPDATING.md)
 - [Maintainer release workflow](docs/RELEASING.md)
 - [Character asset license](ASSET_LICENSE.md)

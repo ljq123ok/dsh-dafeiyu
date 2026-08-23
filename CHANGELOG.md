@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.0
+
+MacOS native refactor — BigFish now runs as a transparent macOS window with real-time
+animation, state bubbles, and system notifications.
+
+### Added
+
+- **macOS native helper**: Swift-based `DafeiyuHelper` executable replaces the Python
+  helper. Runs as a transparent, frameless, always-on-top `NSWindow` on macOS (Apple
+  Silicon only).
+- **State animation**: multi-frame PNG clips per state (idle/thinking/working/waiting/
+  success/error), driven by a run-loop timer with frameMs control.
+- **Status bubble**: shows current phase, active step, project name, and real todo
+  progress alongside the pet. Supports always/hidden/custom modes with per-state filtering.
+- **Multi-task card**: when two or more DSH sessions are active, a card lists each task
+  with state indicator (thinking/working/waiting/success/error).
+- **Settings & layout persistence**: `scale`, `bubbleScale`, `reducedMotion`, `bubbleMode`,
+  `bubbleStates` all configurable via DSH settings. Pet position persists across restarts
+  via `~/Library/Application Support/dsh-dafeiyu/layout.json`.
+- **Desktop notification**: SUCCESS and ERROR completion states trigger macOS system
+  notifications via `UNUserNotificationCenter` (requires notification permission).
+- **Drag**: pet window is draggable; position auto-saved.
+- **Stability hardening**: invalid JSON and unknown message kinds are logged to stderr and
+  ignored (never crash). Missing assets fail fast with exit code 2.
+
+### Changed
+
+- Platform limited to **macOS Apple Silicon (arm64)** — no Intel Mac, Windows, or Linux.
+- Helper is now built from `runtime/macos/` (SwiftPM) instead of `runtime/helper.py`.
+- `package.json`: `cpu` narrowed to `["arm64"]`, `os` to `["darwin"]`, `files`
+  pruned of Python/Windows assets, `scripts` updated to macOS-only.
+
+### Removed
+
+- Python helper (`runtime/helper.py`, `runtime/animation_model.py`, `runtime/layout_store.py`)
+  and all Windows distribution assets (`runtime/bin/win32-x64/`, `scripts/build-helper.ps1`,
+  `requirements.txt`).
+
+---
+
 ## 0.1.2
 
 Fixes for WSL reliability and project renames.

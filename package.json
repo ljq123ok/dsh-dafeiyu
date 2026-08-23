@@ -1,7 +1,7 @@
 {
   "name": "dsh-dafeiyu",
-  "version": "0.1.2",
-  "description": "A desktop-native BigFish companion driven by DeepSeek Harness session events.",
+  "version": "0.2.0",
+  "description": "A macOS-native BigFish companion driven by DeepSeek Harness session events.",
   "author": "QCYTSN",
   "type": "module",
   "main": "src/index.js",
@@ -15,18 +15,12 @@
   "files": [
     "src/",
     "lib/client.js",
-    "runtime/helper.py",
-    "runtime/animation_model.py",
-    "runtime/layout_store.py",
-    "runtime/__init__.py",
-    "runtime/bin/win32-x64/dsh-dafeiyu-helper.exe",
-    "scripts/build-helper.ps1",
-    "scripts/test-packaged-helper.mjs",
+    "runtime/bin/darwin-arm64/dsh-dafeiyu-helper",
+    "runtime/macos/",
     "assets/pet/",
     "assets/pet-manifest.json",
     "docs/",
     "cordis.patch.yml",
-    "requirements.txt",
     "README.md",
     "README_EN.md",
     "CHANGELOG.md",
@@ -34,12 +28,9 @@
     "LICENSE"
   ],
   "cpu": [
-    "x64",
     "arm64"
   ],
   "os": [
-    "win32",
-    "linux",
     "darwin"
   ],
   "engines": {
@@ -51,11 +42,7 @@
   "scripts": {
     "test": "node --test --test-timeout=10000 test/assets.test.js test/config-endpoint.test.js test/client-slot-key.test.js test/helper-command.test.js test/protocol.test.js test/status-copy.test.js test/reducer.test.js test/helper-lifecycle.test.js test/helper-restart.test.js test/plugin-integration.test.js",
     "test:helper": "node --test test/helper-lifecycle.test.js",
-    "test:python": "py -3 -m unittest discover -s runtime/tests -t .",
     "test:ui": "node test/fixtures/ui-acceptance.js",
-    "helper:headless": "py -3 runtime/helper.py --headless",
-    "helper:visual": "py -3 runtime/helper.py",
-    "build:helper:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-helper.ps1",
     "build:helper:mac": "swift build --package-path runtime/macos -c release --arch arm64 && mkdir -p runtime/bin/darwin-arm64 && cp runtime/macos/.build/release/DafeiyuHelper runtime/bin/darwin-arm64/dsh-dafeiyu-helper && chmod +x runtime/bin/darwin-arm64/dsh-dafeiyu-helper",
     "test:helper:mac:headless": "runtime/bin/darwin-arm64/dsh-dafeiyu-helper --headless",
     "test:helper:packaged": "node scripts/test-packaged-helper.mjs"

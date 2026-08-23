@@ -2,7 +2,7 @@
 
 # DSH 大肥鱼 🐋
 
-**住在 Windows 桌面上、由 DeepSeek Harness 真实工作状态驱动的 Agent 伴侣。**
+**住在 macOS 桌面上、由 DeepSeek Harness 真实工作状态驱动的 Agent 伴侣。**
 
 入口属于 DSH，生命周期属于 DSH，显示层属于桌面。
 
@@ -18,7 +18,7 @@ DSH 大肥鱼不是一个需要单独启动的桌宠应用。它由 DSH 插件�
 一起启动和退出，并以透明、无边框、始终置顶的原生窗口显示在桌面上。即使切换到
 VS Code、浏览器或文件管理器，也能知道 DSH 当前在思考、修改、测试、等待还是已经完成。
 
-> 当前版本：`0.1.2` · Windows / WSL2 Alpha
+> 当前版本：`0.2.0` · macOS (Apple Silicon) · 首版
 
 ## 关注最新进展
 
@@ -34,11 +34,11 @@ VS Code、浏览器或文件管理器，也能知道 DSH 当前在思考、修�
 
 ## 它有什么用？
 
-- **离开 DSH 页面也能看到状态**：大肥鱼始终显示在 Windows 桌面最上层。
+- **离开 DSH 页面也能看到状态**：大肥鱼始终显示在 macOS 桌面最上层。
 - **反馈来自真实 Agent 事件**：不会读取屏幕，也不会把你在其他软件里的操作误判为 DSH 工作。
 - **展示足够但不过量的信息**：项目名、当前阶段、正在进行的步骤和真实待办进度会显示在状态卡上。
 - **有生命力但不打扰**：思考、查找、修改、执行、验证、等待、完成和错误都有对应动作与自然文案。
-- **没有第二套应用入口**：无需单独运行 Helper、安装 Python或配置额外端口。
+- **没有第二套应用入口**：无需单独运行 Helper、安装 Python 或配置额外端口。
 
 如果 DSH 没有提供待办清单，大肥鱼只显示“分析阶段”“实现阶段”“验证阶段”等可靠信息，
 不会编造完成百分比。
@@ -84,15 +84,16 @@ stateDiagram-v2
 
 ## 系统要求
 
-- Windows 10/11 x64，或 WSL2（通过 Windows interop 运行桌面 Helper）
+- **macOS 14+（Sonoma 或更新），Apple Silicon（M1/M2/M3/M4 系列）**
+- **不支持 Intel Mac（x86_64）**：当前发布仅含 `darwin-arm64` Helper 二进制
+- **不支持 Windows / Linux**：无桌面显示，也不提供对应 Helper
 - 已安装并能正常运行的 DeepSeek Harness WebUI
 - DSH CLI 中可以使用 `plugin --profile web` 命令
 - npm 上的稳定版 `dsh-dafeiyu`（或抢先测试的 `dsh-dafeiyu@alpha`），或 GitHub Release 中的 `.tgz` 安装包
 
-普通用户**不需要**安装 Python、PySide6 或单独运行
-`dsh-dafeiyu-helper.exe`。Windows Helper 已经包含在发布包里。
+普通用户**不需要**安装 Xcode 命令行工具或单独运行 Helper；macOS Helper 已包含在发布包里。
 
-当前 Alpha 版的设置与桌面状态文案使用简体中文。
+当前首版的设置与桌面状态文案使用简体中文。
 
 ## 安装插件
 
@@ -102,30 +103,27 @@ stateDiagram-v2
 
 ### 2. 一行命令安装
 
-在 PowerShell 中进入你的 DSH 安装目录，例如：
+在终端中进入你的 DSH 安装目录，例如：
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 ```
 
 然后从 npm 安装稳定版：
 
-```powershell
+```bash
 pnpm exec dsh plugin --profile web add dsh-dafeiyu
 ```
 
 如果你的系统已经能直接使用全局 `dsh` 命令，只需要：
 
-```powershell
+```bash
 dsh plugin --profile web add dsh-dafeiyu
 ```
 
 想抢先试用新功能（`@alpha` 测试版）的用户，把命令里的包名换成 `dsh-dafeiyu@alpha` 即可。
 
-如果 DSH 运行在 WSL2，请在 WSL 终端执行同一条安装命令。插件会自动通过
-`cmd.exe` 启动包内的 Windows Helper，不需要手动 `chmod`，也不需要在 WSL
-安装 Python 或 PySide6。当前支持范围是 Windows x64 上的 WSL2；普通 Linux、
-远程 Linux 和容器不是本版本的桌面显示目标。
+当前支持范围是 macOS (Apple Silicon)；普通 Linux、远程 Linux 和容器不是本版本的桌面显示目标。
 
 ### 3. GitHub Release 备用安装方式
 
@@ -139,8 +137,8 @@ dsh-dafeiyu-<version>.tgz
 
 不解压，在 DSH 目录中直接安装下载的插件包：
 
-```powershell
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<version>.tgz"
+```bash
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<version>.tgz"
 ```
 
 ### 4. 启动 DSH
@@ -195,24 +193,21 @@ pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<vers
 ## 桌面互动
 
 - **拖动**：按住大肥鱼移动位置，位置会自动保存。
-- **点击或双击**：触发摸头、戳一下、尾巴等短互动，之后恢复最新 DSH 状态。
-- **右键菜单**：调整大小、气泡大小、减少动态、打开 WebUI、本次隐藏或本次关闭。
-- **本次隐藏**：只隐藏窗口，不禁用插件。
-- **本次关闭**：关闭当前 Helper，本次 DSH 运行期间不会自动重启；下次启动 DSH 会再次出现。
+- 点击/双击等互动、右键菜单：首版暂未实现，后续版本会加入。
 
 ## 更新插件
 
 GitHub 仓库出现新提交后，已经安装的插件**不会自动变化**。新版本发布后，完全退出
 DSH，然后更新 npm 稳定版包：
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 pnpm exec dsh plugin --profile web update dsh-dafeiyu
 ```
 
 也可以再次执行安装命令，它会解析 npm `latest` 标签指向的新版本：
 
-```powershell
+```bash
 pnpm exec dsh plugin --profile web add dsh-dafeiyu
 ```
 
@@ -220,28 +215,28 @@ pnpm exec dsh plugin --profile web add dsh-dafeiyu
 
 使用 GitHub Release 安装的用户，可以下载新 `.tgz` 后覆盖安装：
 
-```powershell
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<new-version>.tgz"
+```bash
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<new-version>.tgz"
 ```
 
-以上方式都会替换插件及随包携带的 Windows Helper，并保留 DSH 已保存的设置。详细
+以上方式都会替换插件及随包携带的 macOS Helper，并保留 DSH 已保存的设置。详细
 说明见 [插件更新与回退](docs/UPDATING.md)。
 
 ## 回退到旧版本
 
 完全退出 DSH，重新安装之前保留的旧版 `.tgz`：
 
-```powershell
-cd D:\DSH
-pnpm exec dsh plugin --profile web add "C:\Users\you\Downloads\dsh-dafeiyu-<old-version>.tgz"
+```bash
+cd ~/DSH
+pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<old-version>.tgz"
 ```
 
 ## 卸载插件
 
 完全退出 DSH 后运行：
 
-```powershell
-cd D:\DSH
+```bash
+cd ~/DSH
 pnpm exec dsh plugin --profile web remove dsh-dafeiyu
 ```
 
@@ -256,7 +251,7 @@ pnpm exec dsh plugin --profile web remove dsh-dafeiyu
 1. 确认安装使用的是 `--profile web`。
 2. 完全退出并重新启动 DSH Host。
 3. 进入“设置 → 插件 → 插件配置”确认“启用大肥鱼”已经勾选。
-4. 确认使用 Windows x64 发布包，而不是只克隆了缺少预构建 Helper 的源码。
+4. 确认 macOS 为 Apple Silicon（M1/M2/M3/M4），且使用的是 `darwin-arm64` 发布包。
 
 </details>
 
@@ -277,10 +272,15 @@ pnpm exec dsh plugin --profile web remove dsh-dafeiyu
 </details>
 
 <details>
-<summary><strong>右键选择“本次关闭”后为什么没有自动回来？</strong></summary>
+<details>
+<summary><strong>任务完成/出错时没有收到系统通知</strong></summary>
 
-这是预期行为。“本次关闭”会抑制当前 DSH 运行期间的自动重启；完全退出并重新启动
-DSH 后会恢复。若想永久关闭，请在 DSH 设置中取消“启用大肥鱼”。
+大肥鱼通过 macOS 用户通知中心发送完成/错误通知。需要在 DSH 首次启动后在
+**系统设置 → 隐私与安全性 → 通知** 中授权（首次收到通知时系统会弹出一次授权请求）。
+
+如果未授权，大肥鱼会照常显示状态，只是不会弹出通知横幅；Helper 日志会在
+stderr 中记录"notification permission not granted"提示。首版通过 npm 分发的裸
+命令行二进制不含应用 bundle 身份，若需稳定收到横幅通知，请通过 `.app` 形式分发。
 
 </details>
 
@@ -295,25 +295,17 @@ DSH 后会恢复。若想永久关闭，请在 DSH 设置中取消“启用大�
 
 ## 开发与测试
 
-```powershell
+```bash
 pnpm install
 npm test
-py -3 -m unittest discover -s runtime/tests -t .
+npm run build:helper:mac
+npm run test:helper:mac:headless
 ```
 
-开发时可以从源码运行 Helper，但正式用户不应手动启动它：
+开发时可以直接运行 Helper（调试用），正式用户不应手动启动它：
 
-```powershell
-py -3 -m pip install -r requirements.txt
-py -3 runtime\helper.py
-```
-
-构建 Windows Helper：
-
-```powershell
-python -m pip install -r requirements.txt pyinstaller
-$env:DSH_DAFEIYU_BUILD_PYTHON = (Get-Command python).Source
-npm run build:helper:windows
+```bash
+swift run --package-path runtime/macos --target DafeiyuHelper -- --headless
 ```
 
 ## 更多文档
@@ -321,7 +313,7 @@ npm run build:helper:windows
 - [产品范围与取舍](docs/PRODUCT_SCOPE.md)
 - [执行计划](docs/EXECUTION_PLAN.md)
 - [兼容性验证](docs/PHASE0.md)
-- [Windows 验收与性能记录](docs/ACCEPTANCE.md)
+- [验收记录](docs/ACCEPTANCE.md)
 - [更新、回退与卸载](docs/UPDATING.md)
 - [维护者发布流程](docs/RELEASING.md)
 - [角色视觉资产许可](ASSET_LICENSE.md)

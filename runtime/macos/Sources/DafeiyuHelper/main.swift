@@ -3,6 +3,12 @@
 // the newline-delimited JSON protocol on stdout/stdin so the Node plugin can be
 // wired against a real Swift binary.
 //
+// Step7 adds the CONFIG consumption and settings/layout wiring: the visual mode
+// reads initial settings from `DSH_DAFEIYU_*` env, applies CONFIG messages live
+// (scale/bubbleScale/reducedMotion/bubbleMode/bubbleStates), and persists the
+// dragged window position via LayoutStore. All of it lives in the `!isHeadless`
+// branch — the headless protocol path stays byte-for-byte identical to M1.
+//
 // Protocol invariants (must hold in every build of this helper):
 //   1. The first line written to stdout is a `ready` message (protocolVersion: 1).
 //   2. A `ping` message is answered with a `pong` message.
@@ -94,11 +100,15 @@ var petWindow: PetWindow?
 
 if !isHeadless {
   do {
+    // Step7: read the initial settings from DSH_DAFEIYU_* env (startup values; live
+    // CONFIG messages override them afterwards).
+    applyEnvConfig()
     let store = try ManifestStore(assetRootOverride: assetRootOverride)
     manifestStore = store
     let idle = try store.idleClip()
-    let window = PetWindow(clip: idle)
+    let window = PetWindow(clip: idle, scale: CGFloat(companionModel.configScale))
     petWindow = window // retain the window for the lifetime of the run loop
+    configurePetView(window)
     // Wire the model→window redraw hook (F4: a pulse expiry must re-resolve the base
     // clip). In headless mode this closure stays nil, so the hook is a no-op there.
     companionModel.onActiveClipChanged = { [weak store, weak window] in
@@ -239,7 +249,15 @@ func handleLine(_ lineData: Data) {
     let rawTasks = object["tasks"] as? [[String: Any]] ?? []
     companionModel.applyTasks(rawTasks.map(TaskItem.init(dictionary:)))
     syncOverlays()
-  case .ready, .pong, .closed, .hello, .config:
+  case .config:
+    // Step7: live settings change. Apply to the model and the UI (window scale,
+    // bubble scale, reduced motion, bubble visibility). Only in visual mode — the
+    // headless path ignores CONFIG entirely so the M1 protocol behavior is unchanged.
+    if !isHeadless {
+      companionModel.applyConfig(object)
+      applyConfigToUI()
+    }
+  case .ready, .pong, .closed, .hello:
     // Legal protocol messages not rendered here; acknowledged by keeping the pipe open.
     break
   }
@@ -268,11 +286,76 @@ func taskInfo(from object: [String: Any]) -> TaskInfo? {
 }
 
 /// Push the current bubble/card state from the model into the window's view.
+/// Step7: also refresh the state the single bubble is attributed to, so a state
+/// change re-filters the bubble under `bubbleMode`/`bubbleStates`.
 @MainActor
 func syncOverlays() {
   guard let window = petWindow else { return }
+  window.petView.stateForBubble = companionModel.activeState
   window.petView.setBubble(companionModel.currentTask)
   window.petView.setCard(companionModel.taskList)
+}
+
+/// Step7: read the startup settings from the `DSH_DAFEIYU_*` env variables (the same
+/// values the Node side passes in startRuntime, src/index.js L186-191). Invalid or
+/// missing values keep the model defaults. Visual mode only.
+@MainActor
+func applyEnvConfig() {
+  let env = ProcessInfo.processInfo.environment
+  if let raw = env["DSH_DAFEIYU_SCALE"], let value = Double(raw), (0.7...1.4).contains(value) {
+    companionModel.configScale = value
+  }
+  if let raw = env["DSH_DAFEIYU_BUBBLE_SCALE"], let value = Double(raw), (0.8...1.2).contains(value) {
+    companionModel.configBubbleScale = value
+  }
+  if env["DSH_DAFEIYU_REDUCED_MOTION"] == "1" {
+    companionModel.configReducedMotion = true
+  }
+  if let mode = env["DSH_DAFEIYU_BUBBLE_MODE"], ["always", "hidden", "custom"].contains(mode) {
+    companionModel.configBubbleMode = mode
+  }
+  if let raw = env["DSH_DAFEIYU_BUBBLE_STATES"], !raw.isEmpty {
+    companionModel.configBubbleStates = Set(raw.split(separator: ",").map(String.init))
+  }
+  if let level = env["DSH_DAFEIYU_ACTIVITY_LEVEL"], ["quiet", "normal", "lively"].contains(level) {
+    companionModel.configActivityLevel = level
+  }
+}
+
+/// Step7: push the model's current configuration into the window's view (bubble/card
+/// scale, reduced motion, bubble visibility filter). Called at startup and after every
+/// live CONFIG application. The visibility decision is snapshotted from the model's
+/// (MainActor-isolated) `shouldShowBubble` into a pure-value closure the view consults
+/// at draw time without a MainActor hop; every reconfiguration re-snapshots it, so it
+/// always reflects the latest CONFIG.
+@MainActor
+func configurePetView(_ window: PetWindow) {
+  window.petView.bubbleScale = CGFloat(companionModel.configBubbleScale)
+  window.petView.reducedMotion = companionModel.configReducedMotion
+  let mode = companionModel.configBubbleMode
+  let states = companionModel.configBubbleStates
+  window.petView.bubbleFilter = { state in
+    switch mode {
+    case "hidden": return false
+    case "custom": guard let state else { return false }; return states.contains(state)
+    default: return true
+    }
+  }
+  window.petView.stateForBubble = companionModel.activeState
+}
+
+/// Step7: apply the model's current configuration to the UI — window scale (resize),
+/// view config, overlay data, and a clip re-show (so reduced-motion/scale take effect
+/// on the visible frame).
+@MainActor
+func applyConfigToUI() {
+  guard let window = petWindow else { return }
+  window.applyScale(CGFloat(companionModel.configScale))
+  configurePetView(window)
+  syncOverlays()
+  if let store = manifestStore {
+    showActiveClip(store: store, window: window, fatalIfMissing: false)
+  }
 }
 
 /// Parse one TASKS entry into a TaskItem (all fields optional except sessionId).

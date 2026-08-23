@@ -1,4 +1,4 @@
-// CompanionModel (Step5/Step6 of the macOS native refactor).
+// CompanionModel (Step5/Step6/Step7 of the macOS native refactor).
 //
 // Owns the animation state machine. Two layers of state drive which clip is shown:
 //   - baseState / baseActivity: the steady state from the most recent STATE message.
@@ -11,6 +11,13 @@
 // of truth; the protocol reader calls `applyState`/`applyPulse`/`applyTask`/
 // `applyTasks`; the window then resolves the matching clip via ManifestStore and the
 // view draws the bubble from `currentTask`/`taskList`.
+//
+// Step7 adds the CONFIG consumption: the model stores the configuration fields
+// (scale/bubbleScale/reducedMotion/bubbleMode/bubbleStates, plus activityLevel which
+// is stored but not consumed yet) and answers the visibility question — whether a
+// bubble/card with a given state should be shown — via `shouldShowBubble`. Main.swift
+// feeds the initial values from `DSH_DAFEIYU_*` env at startup and applies live CONFIG
+// messages through `applyConfig`.
 
 import Foundation
 
@@ -69,14 +76,81 @@ final class CompanionModel {
   /// sending `{ tasks: [] }` when fewer than two tasks are active, which maps to nil.
   private(set) var taskList: [TaskItem]?
 
+  // MARK: - Step7 configuration (CONFIG message / DSH_DAFEIYU_* env)
+
+  /// Window/pet scale factor (0.7–1.4, default 1). Internal (not private) so
+  /// main.swift can seed it from DSH_DAFEIYU_* env before the window is built.
+  var configScale: Double = 1
+  /// Bubble/card scale factor (0.8–1.2, default 1).
+  var configBubbleScale: Double = 1
+  /// Reduced motion: hold looping clips on their first frame (default false).
+  var configReducedMotion: Bool = false
+  /// Bubble mode: "always" | "hidden" | "custom" (default "always").
+  var configBubbleMode: String = "always"
+  /// In "custom" mode, which states may show a bubble (default SUCCESS/ERROR/WAITING).
+  var configBubbleStates: Set<String> = ["SUCCESS", "ERROR", "WAITING"]
+  /// Activity level ("quiet"/"normal"/"lively"). Carried by CONFIG/env but **not
+  /// consumed yet** (idle micro-action frequency is a later step, see plan §8).
+  var configActivityLevel: String = "normal"
+
   /// Hook invoked whenever the active clip should be re-resolved and redrawn — after a
   /// STATE change or a pulse expiry. main.swift wires this to `showActiveClip` so the
   /// window follows the model without the model holding view/window references (F4: a
   /// pulse that expires must redraw to the base clip, not leave the pulse frame on screen).
+  /// Step7: `applyConfig` also fires it so a CONFIG-only change still repaints.
   var onActiveClipChanged: (() -> Void)?
 
   /// The state/activity that should currently be rendered: pulse wins over base.
   var activeState: String { pulseState ?? baseState }
+
+  /// Whether a bubble/card associated with `state` should be shown, per the current
+  /// bubble mode:
+  ///   - "hidden"  → never.
+  ///   - "custom"  → only when `state` is in `bubbleStates`.
+  ///   - "always"  → always.
+  /// The multi-task card applies this per task item (filtered, then ≥2 remain).
+  /// MainActor-isolated: main.swift snapshots the decision into the view's pure-value
+  /// filter closure (main.swift configurePetView), which the view consults at draw
+  /// time without an actor hop.
+  func shouldShowBubble(state: String?) -> Bool {
+    switch configBubbleMode {
+    case "hidden":
+      return false
+    case "custom":
+      guard let state else { return false }
+      return configBubbleStates.contains(state)
+    default:
+      return true
+    }
+  }
+
+  /// Apply a CONFIG message payload. Invalid/missing values keep the current value
+  /// (defaults at startup). Fires `onActiveClipChanged` so the visible overlays are
+  /// re-evaluated (window resizing for `scale` is handled by main.swift's UI wiring).
+  func applyConfig(_ config: [String: Any]) {
+    if let scale = config["scale"] as? Double, (0.7...1.4).contains(scale) {
+      configScale = scale
+    }
+    if let bubbleScale = config["bubbleScale"] as? Double, (0.8...1.2).contains(bubbleScale) {
+      configBubbleScale = bubbleScale
+    }
+    if let reducedMotion = config["reducedMotion"] as? Bool {
+      configReducedMotion = reducedMotion
+    }
+    if let bubbleMode = config["bubbleMode"] as? String, ["always", "hidden", "custom"].contains(bubbleMode) {
+      configBubbleMode = bubbleMode
+    }
+    if let bubbleStates = config["bubbleStates"] as? [Any] {
+      let states = bubbleStates.compactMap { $0 as? String }
+      if !states.isEmpty {
+        configBubbleStates = Set(states)
+      }
+    }
+    if let activityLevel = config["activityLevel"] as? String, ["quiet", "normal", "lively"].contains(activityLevel) {
+      configActivityLevel = activityLevel
+    }
+    onActiveClipChanged?()
+  }
   var activeActivity: String? {
     if pulseState != nil { return pulseActivity }
     return baseActivity

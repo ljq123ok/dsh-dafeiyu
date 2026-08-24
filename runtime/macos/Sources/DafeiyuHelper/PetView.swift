@@ -83,24 +83,22 @@ final class PetView: NSView {
   /// start immediately without a double click.
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-  // MARK: - First responder (dragging requires first-responder state)
+  // MARK: - Key window (dragging requires the view to be first responder)
 
-  // Step11: a nonactivating NSPanel never becomes key, so the system will not
-  // automatically make its view the first responder. Without this, mouseDown fires
-  // but mouseDragged never does — the drag never moves the window. We manually
-  // grab first-responder status at the start of a drag and give it back on mouse-up.
+  // Step11: the panel is now a normal borderless panel (not nonactivating), so the
+  // system can make it the key window on mouse-down. We still call makeKey()
+  // explicitly to be safe, and resignKey() at mouse-up to restore the "don't steal
+  // focus from the app the user was using" behavior.
   override func becomeFirstResponder() -> Bool { true }
   override func resignFirstResponder() -> Bool { true }
   override var acceptsFirstResponder: Bool { true }
 
   override func mouseDown(with event: NSEvent) {
     guard let window else { return }
-    // Step11: without becoming first responder, mouseDragged is never delivered to
-    // a view inside a nonactivating panel — this is the root cause of "cannot drag".
-    // Use `self.window`, not NSApp.mainWindow: a nonactivating panel is never key,
-    // so NSApp.mainWindow can be nil or another app's window and the call silently
-    // fails. We must install first responder within the pet window itself.
-    window.makeFirstResponder(self)
+    // Step11: explicitly make the panel key so the view can become first responder
+    // and mouseDragged fires. (A nonactivating panel could never become key — that
+    // was the original root cause; Step11 removed nonactivating to fix it.)
+    window.makeKeyAndOrderFront(nil)
     dragStartScreen = NSEvent.mouseLocation
     dragStartWindowOrigin = window.frame.origin
   }
@@ -114,9 +112,9 @@ final class PetView: NSView {
   override func mouseUp(with event: NSEvent) {
     dragStartScreen = nil
     dragStartWindowOrigin = nil
-    // Step11: release first-responder status so the view can be re-activated on the
-    // next drag; keeping it would steal focus from other apps while the pet is idle.
-    window?.resignFirstResponder()
+    // Step11: release key status so the pet doesn't steal focus from whatever the
+    // user was using before clicking it.
+    window?.resignKey()
     onDragEnded?()
   }
 

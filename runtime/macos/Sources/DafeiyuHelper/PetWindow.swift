@@ -43,7 +43,7 @@ final class PetWindow: NSPanel {
     )
     super.init(
       contentRect: NSRect(origin: .zero, size: size),
-      styleMask: [.borderless, .nonactivatingPanel],
+      styleMask: [.borderless],
       backing: .buffered,
       defer: false
     )
@@ -54,7 +54,11 @@ final class PetWindow: NSPanel {
     hasShadow = false
     level = .floating
     collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-    styleMask = [.borderless, .nonactivatingPanel]
+    styleMask = [.borderless]
+    // Step11: intentionally NOT nonactivating — a nonactivating panel can never
+    // become key, and `makeFirstResponder` only works inside a key window.
+    // Making the panel briefly key during a drag is the reliable way to let
+    // mouseDragged fire; the "don't steal focus" behavior is restored at mouseUp.
     ignoresMouseEvents = false
     hidesOnDeactivate = false
     // —— end §4.2 attributes ——

@@ -500,7 +500,13 @@ export class CompanionReducer {
 
   #taskMessages() {
     const tasks = this.#activeTaskList()
-    if (tasks.length < 2) {
+    // Show the card when at least two sessions are active overall (the selected
+    // one + at least one other). After the selected session is excluded the card
+    // may hold a single row — that is by design (user chose "card shows others").
+    const activeTotal = [...this.sessions.values()]
+      .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
+      .length
+    if (activeTotal < 2 || tasks.length === 0) {
       if (this.tasksSignature !== undefined) {
         this.tasksSignature = undefined
         return [createMessage(CompanionMessageKind.TASKS, { tasks: [] })]
@@ -521,7 +527,11 @@ export class CompanionReducer {
   }
 
   #activeTaskList() {
+    // The multi-task card lists every active session EXCEPT the selected one —
+    // the selected session's state is already shown in the single-task bubble,
+    // so listing it again duplicates the copy (user chose "card shows others").
     return [...this.sessions.values()]
+      .filter((record) => record.id !== this.selectedSessionId)
       .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
       .sort((left, right) => {
         const priority = (statePriority[right.state] ?? 0) - (statePriority[left.state] ?? 0)

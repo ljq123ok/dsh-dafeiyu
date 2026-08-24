@@ -192,15 +192,18 @@ test('multi-session selection follows attention priority instead of latest-event
 
   const [tasksAfterStart] = reducer.handle(working, event('turn/start', { turn: 1 }, 1))
   assert.equal(tasksAfterStart.kind, CompanionMessageKind.TASKS)
-  assert.equal(tasksAfterStart.tasks.length, 2)
-  assert.equal(tasksAfterStart.tasks[0].sessionId, 'waiting-session')
+  // Card EXCLUDES the selected session (the bubble already shows it) — so with
+  // the waiting session selected and the working session starting, the card has
+  // exactly one row: the working session (State: WAITING now, then WORKING).
+  assert.equal(tasksAfterStart.tasks.length, 1)
+  assert.equal(tasksAfterStart.tasks[0].sessionId, 'working-session')
   const [tasksAfterTool] = reducer.handle(working, event('tool/call', {
     callId: 'call-working',
     name: 'shell_command',
   }, 2))
   assert.equal(tasksAfterTool.kind, CompanionMessageKind.TASKS)
-  assert.equal(tasksAfterTool.tasks[0].state, CompanionState.WAITING)
-  assert.equal(tasksAfterTool.tasks[1].state, CompanionState.WORKING)
+  assert.equal(tasksAfterTool.tasks.length, 1)
+  assert.equal(tasksAfterTool.tasks[0].state, CompanionState.WORKING)
 
   const [revealed] = reducer.disposeSession(waiting)
   assert.equal(revealed.sessionId, 'working-session')
@@ -254,8 +257,10 @@ test('failed turns remain visible until that session changes or is disposed', ()
   assert.equal(failure.state, CompanionState.ERROR)
   const [tasksAfterNewer] = reducer.handle(newer, event('turn/start', { turn: 1 }, 1))
   assert.equal(tasksAfterNewer.kind, CompanionMessageKind.TASKS)
-  assert.equal(tasksAfterNewer.tasks.length, 2)
-  assert.equal(tasksAfterNewer.tasks[0].state, CompanionState.ERROR)
+  // The failed session is selected (bubble shows it), so the card lists the
+  // other active session — the newer one — as a single row.
+  assert.equal(tasksAfterNewer.tasks.length, 1)
+  assert.equal(tasksAfterNewer.tasks[0].sessionId, 'newer-session')
 })
 
 test('todo events preserve real project and progress context for the status card', () => {

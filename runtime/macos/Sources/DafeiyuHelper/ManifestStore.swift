@@ -128,6 +128,9 @@ final class ManifestStore {
 extension ManifestStore {
   /// Step4 compatibility: first frame of the idle clip as a single image.
   func idleImage() throws -> NSImage {
-    try idleClip().frames.first!
+    // Step10: clip(named:) guarantees non-empty frames (guard !images.isEmpty).
+    let clip = try idleClip()
+    assert(!clip.frames.isEmpty, "idleClip() must return non-empty frames")
+    return clip.frames.first!
   }
 }

@@ -273,11 +273,17 @@ func handleLine(_ lineData: Data) {
     // the desktop notification (visual mode only, deduplicated). This is the main
     // notification channel — the reducer sends SUCCESS/ERROR as PULSE (L317/406).
     if let state = object["state"] as? String {
+      // Step10 (t2-minor-2): `phase` (e.g. "turn-end") is informational on the
+      // reducer side; Swift never consumes it — pulse timing is driven by ttlMs.
       let message = object["message"] as? String
       let detail = object["detail"] as? String
+      // Step10 (t2-minor-1): the reducer emits `resumeActivity` (not `activity`)
+      // on PULSE messages when it carries the activity that should resume after the
+      // pulse; tolerate both fields so the helper survives either shape.
+      let pulseActivity = (object["activity"] ?? object["resumeActivity"]) as? String
       companionModel.applyPulse(
         state,
-        activity: object["activity"] as? String,
+        activity: pulseActivity,
         ttlMs: object["ttlMs"] as? Int,
         resumeState: object["resumeState"] as? String,
         message: message,

@@ -157,8 +157,10 @@ final class PetWindow: NSPanel {
     let interval = max(1.0 / 60.0, Double(clip.frameMs) / 1000.0)
     frameTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
       [weak self] _ in
-      // The timer is scheduled on the main run loop, so it fires on the main thread.
-      // Bridge into the main actor to touch the main-isolated PetView safely.
+      // Step10 (F3): the timer is scheduled on the main run loop and fires on
+      // the main thread. `assumeIsolated` is a no-op runtime assertion — it runs
+      // inline without an actor hop, but Swift 6 strict concurrency requires an
+      // explicit bridge from this Sendable closure into the main actor.
       MainActor.assumeIsolated { self?.petView.advanceFrame() }
     }
   }

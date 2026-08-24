@@ -159,10 +159,10 @@ final class CompanionModel {
       configBubbleMode = bubbleMode
     }
     if let bubbleStates = config["bubbleStates"] as? [Any] {
-      let states = bubbleStates.compactMap { $0 as? String }
-      if !states.isEmpty {
-        configBubbleStates = Set(states)
-      }
+      // Step10 (F5): a CONFIG message with an empty array must clear bubbleStates
+      // so "custom" mode can be turned off; TASKS uses nil as its clear signal,
+      // but CONFIG has no separate "absent" case — an explicit [] must clear.
+      configBubbleStates = Set(bubbleStates.compactMap { $0 as? String })
     }
     if let activityLevel = config["activityLevel"] as? String, ["quiet", "normal", "lively"].contains(activityLevel) {
       configActivityLevel = activityLevel
@@ -225,8 +225,16 @@ final class CompanionModel {
     let ttl = Double(ttlMs ?? 1800) / 1000.0
     pulseTimer = Timer.scheduledTimer(withTimeInterval: ttl, repeats: false) {
       [weak self] _ in
-      // The timer fires on the main run loop's thread, i.e. the main actor.
-      MainActor.assumeIsolated { self?.clearPulse(resumeState: resumeState) }
+      // Step10 (F2/F6): the timer is scheduled on the main run loop and fires
+      // on the main thread. `assumeIsolated` is a no-op runtime assertion — it
+      // runs inline without an actor hop, but under Swift 6 strict concurrency
+      // the compiler still requires an explicit bridge from this Sendable
+      // closure into the main actor. Release the one-shot timer after it fires
+      // so a subsequent pulse can reschedule without holding a dead reference.
+      MainActor.assumeIsolated {
+        self?.clearPulse(resumeState: resumeState)
+        self?.pulseTimer = nil
+      }
     }
   }
 
@@ -238,6 +246,11 @@ final class CompanionModel {
     pulseActivity = nil
     pulseMessage = nil
     pulseDetail = nil
+    // Step10 (F4): resumeState is an intentional override of baseState, not a
+    // fallback to the last STATE. The reducer emits the state that the pulse
+    // should land on when it expires (e.g. IDLE after a SUCCESS), so writing it
+    // to baseState is the correct behaviour — the base is advanced to that
+    // target rather than left at the pre-pulse value.
     if let resume = resumeState, !resume.isEmpty {
       baseState = resume
     }

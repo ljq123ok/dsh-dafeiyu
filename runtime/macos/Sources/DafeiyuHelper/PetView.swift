@@ -45,6 +45,11 @@ final class PetView: NSView {
 
   /// Single-task bubble content (nil hides the bubble).
   private var bubble: TaskInfo?
+  /// Step12: transient overlay bubble (click interactions, completion pulses).
+  /// While set it REPLACES `bubble` in drawing (higher priority); it expires via
+  /// `overlayTimer` and the normal bubble shows again.
+  private var overlay: TaskInfo?
+  private var overlayTimer: Timer?
   /// Multi-task card list (nil or <2 visible entries hides the card).
   private var card: [TaskItem] = []
 
@@ -134,7 +139,30 @@ final class PetView: NSView {
     onDragDelta?(base, now.x - start.x, now.y - start.y)
   }
 
+  /// Step12: click interaction callback (pet-space point in view coordinates,
+  /// clickCount). Wired by PetWindow to play head_pat/tail/poke + overlay bubble.
+  var onClick: ((NSPoint, Int) -> Void)?
+
+  /// Dragging threshold (screen points): a mouse-up within this distance of the
+  /// mouse-down is a click, not a drag.
+  private static let dragThreshold: CGFloat = 5
+
   override func mouseUp(with event: NSEvent) {
+    // Step12: distinguish a click from a drag. A release near the press point
+    // (≤5pt) is a click — route to the interaction handler; anything farther is
+    // a drag and saves the layout as usual.
+    if let start = dragStartScreen {
+      let now = NSEvent.mouseLocation
+      let distance = abs(now.x - start.x) + abs(now.y - start.y)
+      if distance <= Self.dragThreshold {
+        dragStartScreen = nil
+        dragStartWindowOrigin = nil
+        window?.resignKey()
+        let point = convert(event.locationInWindow, from: nil)
+        onClick?(point, event.clickCount)
+        return
+      }
+    }
     dragStartScreen = nil
     dragStartWindowOrigin = nil
     window?.resignKey()
@@ -199,6 +227,25 @@ final class PetView: NSView {
   /// alongside `updateContentSize`.
   var onOverlayChanged: (() -> Void)?
 
+  /// Step12: show a short-lived overlay bubble (click interaction copy, e.g.
+  /// "戳我干嘛，任务还在跑呢"). Clears automatically after `ttlMs` and the
+  /// regular bubble (if any) returns. Pass nil/0 to clear immediately.
+  func setOverlay(_ info: TaskInfo?, ttlMs: Int = 0) {
+    overlayTimer?.invalidate()
+    overlayTimer = nil
+    overlay = info
+    if let info, ttlMs > 0 {
+      overlayTimer = Timer.scheduledTimer(withTimeInterval: Double(ttlMs) / 1000.0, repeats: false) {
+        [weak self] _ in
+        MainActor.assumeIsolated {
+          self?.setOverlay(nil)
+        }
+      }
+    }
+    needsDisplay = true
+    onOverlayChanged?()
+  }
+
   func setBubble(_ info: TaskInfo?) {
     bubble = info
     needsDisplay = true
@@ -238,8 +285,10 @@ final class PetView: NSView {
 
     // Step6 overlays: bubble on the right side of the pet, task card below it.
     // Step7: visibility is filtered per the bubble mode/states.
-    if let bubble, bubbleFilter(stateForBubble) {
-      drawBubble(bubble, imageSize: petSize)
+    // Step12: overlay bubble wins over the steady bubble while it is showing.
+    let shownBubble = overlay ?? bubble
+    if let shownBubble, bubbleFilter(stateForBubble) {
+      drawBubble(shownBubble, imageSize: petSize)
     }
     if !card.isEmpty {
       let visible = card.filter { bubbleFilter($0.state) }
@@ -440,16 +489,27 @@ final class PetView: NSView {
 
   // MARK: - Overlay visibility (PetWindow sizing)
 
+  /// The pet image rectangle in this view's coordinates (bottom-left origin):
+  /// x=0, y = card-block height + 8pt, size = pet image × scale. Mirrors the
+  /// draw() math so click-zone logic sees the same geometry as the painter.
+  var petRectInView: NSRect {
+    let imageSize = currentImage?.size ?? NSSize(width: 238, height: 260)
+    let petSize = NSSize(width: imageSize.width * scale, height: imageSize.height * scale)
+    let cardRows = cardVisibleRows
+    let cardBlockH = cardRows > 0 ? (CGFloat(cardRows) * 22 * bubbleScale + 12 + 8) : 0
+    return NSRect(x: 0, y: cardBlockH + 8, width: petSize.width, height: petSize.height)
+  }
+
   /// Whether the single-task bubble is currently drawn (per bubble mode filter).
   var bubbleVisible: Bool {
-    bubble != nil && bubbleFilter(stateForBubble)
+    (overlay ?? bubble) != nil && bubbleFilter(stateForBubble)
   }
 
   /// Height the bubble needs at the given content (0 when no bubble): message
   /// + detail lines + 16pt padding + optional 12pt progress bar, min 34. Mirrors
   /// drawBubble's height math so PetWindow can size the panel exactly.
   var bubbleHeightNeeded: CGFloat {
-    guard let bubble else { return 0 }
+    guard let bubble = overlay ?? bubble else { return 0 }
     var lines: [NSAttributedString] = []
     if let message = bubble.message, !message.isEmpty {
       lines.append(attributed(message, size: 13, bold: true))

@@ -187,6 +187,15 @@ if !isHeadless {
     let idle = try store.idleClip()
     let window = PetWindow(clip: idle, scale: CGFloat(companionModel.configScale))
     petWindow = window // retain the window for the lifetime of the run loop
+    // Step12: click interactions resolve their clip (head_pat/tail/poke) from the
+    // manifest and, once the overlay ends, return to the real active clip.
+    window.interactionClipProvider = { [weak store] name in
+      try? store?.clip(named: name)
+    }
+    window.onOverlayReturn = { [weak window] in
+      guard let window, let store = manifestStore else { return }
+      showActiveClip(store: store, window: window, fatalIfMissing: false)
+    }
     configurePetView(window)
     // Wire the model→window redraw hook (F4: a pulse expiry must re-resolve the base
     // clip). In headless mode this closure stays nil, so the hook is a no-op there.

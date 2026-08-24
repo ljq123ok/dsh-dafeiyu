@@ -32,6 +32,14 @@ final class PetWindow: NSWindow {
   /// Last clip passed to `showClip` — kept so the reduced-motion toggle can
   /// re-show it (restarting/stopping the frame timer per the new setting).
   private var lastClip: ResolvedClip?
+  /// Step12 (click interaction): resolves a clip by manifest name (head_pat /
+  /// tail / poke). Wired by main.swift from the ManifestStore.
+  var interactionClipProvider: ((String) -> ResolvedClip?)?
+  /// Step12: called when a click-interaction overlay finishes (clip played +
+  /// bubble TTL elapsed) so main.swift can re-show the active base clip.
+  var onOverlayReturn: (() -> Void)?
+  /// Timer that triggers the return after the interaction's TTL.
+  private var interactionTimer: Timer?
   /// Unscaled panel size (pet + reserved bubble column + reserved card row).
   /// `applyScale` and the initial init multiply this by the current scale.
   private let baseSize: NSSize
@@ -111,6 +119,10 @@ final class PetWindow: NSWindow {
     // content (pet alone when no overlay is visible).
     petView.onOverlayChanged = { [weak self] in
       self?.updateContentSize()
+    }
+    // Step12: a click on the pet (not a drag) plays the zone interaction.
+    petView.onClick = { [weak self] point, clickCount in
+      self?.handleClick(at: point, clickCount: clickCount)
     }
 
     if let screen = NSScreen.main {
@@ -215,6 +227,67 @@ final class PetWindow: NSWindow {
     petView.bubbleScale = clamped
     petView.needsDisplay = true
     saveLayout()
+  }
+
+  // MARK: - Step12 click interactions
+
+  /// Handle a click (or double-click) on the pet. Mirrors the original Python
+  /// helper's `_play_click_interaction`: the pet is split into three zones —
+  /// top 45% = head_pat ("摸摸也不能让我少干活哦~"), right 28% = tail
+  /// ("尾巴不是进度条啦！"), everything else = poke ("戳我干嘛，任务还在跑呢").
+  /// A double-click always plays head_pat with a different line. The zone clip
+  /// plays as an overlay; after its bubble TTL the base clip returns via
+  /// `onOverlayReturn`.
+  @MainActor
+  func handleClick(at point: NSPoint, clickCount: Int) {
+    // Pet rectangle in this view's coordinates (bottom-left origin, y up) —
+    // the same geometry the painter uses (petRectInView).
+    let petRect = petView.petRectInView
+    let relativeX = max(0, point.x - petRect.minX)
+    let relativeY = max(0, point.y - petRect.minY)
+    let petW = petRect.width
+    let petH = petRect.height
+
+    if clickCount >= 2 {
+      playInteraction(clip: "head_pat", message: "好啦好啦，知道你喜欢我~", ttlMs: 1800)
+      return
+    }
+    // Top 45% of the pet (high y in bottom-left coords) = head.
+    if relativeY > petH * 0.55 {
+      playInteraction(clip: "head_pat", message: "摸摸也不能让我少干活哦~", ttlMs: 1800)
+    } else if relativeX > petW * 0.72 {
+      playInteraction(clip: "tail", message: "尾巴不是进度条啦！", ttlMs: 1500)
+    } else {
+      playInteraction(clip: "poke", message: "戳我干嘛，任务还在跑呢", ttlMs: 1500)
+    }
+  }
+
+  /// Play an interaction clip + overlay bubble, then schedule the return to the
+  /// base clip after the bubble TTL.
+  @MainActor
+  private func playInteraction(clip name: String, message: String, ttlMs: Int) {
+    guard let clip = interactionClipProvider?(name) else {
+      petDebugLog("interaction: clip '\(name)' unavailable")
+      return
+    }
+    interactionTimer?.invalidate()
+    interactionTimer = nil
+    showClip(clip)
+    petView.setOverlay(
+      TaskInfo(title: nil, completed: nil, total: nil, message: message, detail: nil, project: nil),
+      ttlMs: ttlMs
+    )
+    // After the bubble TTL (plus a small tail so the last frame is visible),
+    // return to the real active clip.
+    let totalMs = ttlMs + Int(Double(clip.frames.count) * Double(clip.frameMs)) + 200
+    interactionTimer = Timer.scheduledTimer(withTimeInterval: Double(totalMs) / 1000.0, repeats: false) {
+      [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.interactionTimer = nil
+        self?.petView.setOverlay(nil)
+        self?.onOverlayReturn?()
+      }
+    }
   }
 
   // MARK: - Step11 right-click menu

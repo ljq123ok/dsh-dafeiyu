@@ -38,6 +38,7 @@ echo "signing (adhoc, staged)..."
 codesign --force --sign - "$STAGED"
 
 echo "copying into runtime/bin..."
+mkdir -p "$(dirname "$APP")"
 cp -R "$STAGED" "$APP"
 
 echo "signing final (post-copy)..."

@@ -265,36 +265,46 @@ func scheduleIdleMicro() {
     default: (6.5, 12.5)
   }
   let delay = Double.random(in: interval.0...interval.1)
-  Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak store, weak window] _ in
-    // Re-check idle/pulse at fire time — the state may have changed while the
-    // timer was pending (a new STATE or PULSE arrived). If so, reschedule so we
-    // don't interrupt a WORKING/THINKING clip with a blink.
-    guard companionModel.activeState == "IDLE", companionModel.pulseState == nil else {
-      scheduleIdleMicro()
-      return
-    }
-    guard let store, let window else { return }
-    guard let name = store.microClipNames.randomElement() else { return }
-    do {
-      let clip = try store.clip(named: name)
-      window.showClip(clip)
-      // Non-looping micro clips hold on their last frame; return to idle after
-      // the clip's playback duration plus a short tail so the last frame is
-      // visible for at least one full tick.
-      let duration = Double(clip.frames.count) * Double(clip.frameMs) / 1000.0 + 0.5
-      Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak store, weak window] _ in
-        guard let store, let window else { return }
-        do {
-          let idle = try store.clip(named: "idle")
-          window.showClip(idle)
-          scheduleIdleMicro()
-        } catch {
-          logToStderr("cannot load idle clip for micro return: \(error)")
-        }
+  Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+    // The timer fires on the main run loop; bridge into the main actor so the
+    // actor-isolated model/window access compiles cleanly under Swift 6 strict
+    // concurrency (a CI toolchain treats these as errors, not warnings). The
+    // closure captures NO non-Sendable values: the module globals
+    // (companionModel/manifestStore/petWindow) are main-actor isolated, so
+    // everything is read inside the assumeIsolated block.
+    MainActor.assumeIsolated {
+      // Re-check idle/pulse at fire time — the state may have changed while the
+      // timer was pending (a new STATE or PULSE arrived). If so, reschedule so we
+      // don't interrupt a WORKING/THINKING clip with a blink.
+      guard companionModel.activeState == "IDLE", companionModel.pulseState == nil else {
+        scheduleIdleMicro()
+        return
       }
-    } catch {
-      logToStderr("cannot load idle micro clip '\(name)': \(error)")
-      scheduleIdleMicro()
+      guard let store = manifestStore, let window = petWindow else { return }
+      guard let name = store.microClipNames.randomElement() else { return }
+      do {
+        let clip = try store.clip(named: name)
+        window.showClip(clip)
+        // Non-looping micro clips hold on their last frame; return to idle after
+        // the clip's playback duration plus a short tail so the last frame is
+        // visible for at least one full tick.
+        let duration = Double(clip.frames.count) * Double(clip.frameMs) / 1000.0 + 0.5
+        Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
+          MainActor.assumeIsolated {
+            guard let store = manifestStore, let window = petWindow else { return }
+            do {
+              let idle = try store.clip(named: "idle")
+              window.showClip(idle)
+              scheduleIdleMicro()
+            } catch {
+              logToStderr("cannot load idle clip for micro return: \(error)")
+            }
+          }
+        }
+      } catch {
+        logToStderr("cannot load idle micro clip '\(name)': \(error)")
+        scheduleIdleMicro()
+      }
     }
   }
 }

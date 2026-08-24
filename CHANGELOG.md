@@ -3,34 +3,54 @@
 ## 0.2.0
 
 MacOS native refactor — BigFish now runs as a transparent macOS window with real-time
-animation, state bubbles, and system notifications.
+animation, state bubbles, system notifications, and full desktop interactivity.
 
 ### Added
 
 - **macOS native helper**: Swift-based `DafeiyuHelper` executable replaces the Python
   helper. Runs as a transparent, frameless, always-on-top `NSWindow` on macOS (Apple
-  Silicon only).
+  Silicon only), packaged as `DafeiyuHelper.app` with a real bundle identity.
 - **State animation**: multi-frame PNG clips per state (idle/thinking/working/waiting/
   success/error), driven by a run-loop timer with frameMs control.
+- **Procedural motion**: breathe/think/work/wait/bounce/shake/dizzy animations applied at
+  draw time (`CACurrentMediaTime` phase), with crossfade (0.10 s) between clip switches
+  and hard-swap for expression clips (blink/glance/dragging).
+- **Idle micro-animations**: blink/glance triggers whose frequency follows the
+  `activityLevel` setting (quiet 12-24 s / normal 6.5-12.5 s / lively 3.5-8 s).
 - **Status bubble**: shows current phase, active step, project name, and real todo
   progress alongside the pet. Supports always/hidden/custom modes with per-state filtering.
-- **Multi-task card**: when two or more DSH sessions are active, a card lists each task
-  with state indicator (thinking/working/waiting/success/error).
-- **Settings & layout persistence**: `scale`, `bubbleScale`, `reducedMotion`, `bubbleMode`,
-  `bubbleStates` all configurable via DSH settings. Pet position persists across restarts
-  via `~/Library/Application Support/dsh-dafeiyu/layout.json`.
+- **Overlay bubble**: transient copy (completion pulses, click interactions) displays
+  above the steady bubble and expires back to the real state.
+- **Multi-task card**: when two or more DSH background sessions are active, a card lists
+  each task with state indicator. The card lists **background sessions only** — the
+  conversation the user is currently looking at (newest user/message) is excluded.
+- **Drag & click interactions**: drag to move (position auto-saved); click zones play
+  head-pat (top), tail (right), poke (body) with matching lines; double-click head-pats.
+- **Right-click menu**: size (mini 0.6 / small 0.8 / standard 1.0 / large 1.25, 55%-140%),
+  bubble size (0.8/1.0/1.2), reduced motion, open WebUI, hide, close.
+- **Completion feedback**: original success/error chimes (`assets/sounds`, volume 1.0,
+  system-sound fallback) plus a window shake on SUCCESS/ERROR.
 - **Desktop notification**: SUCCESS and ERROR completion states trigger macOS system
-  notifications via `UNUserNotificationCenter` (requires notification permission).
-- **Drag**: pet window is draggable; position auto-saved.
+  notifications via `UNUserNotificationCenter` (requests permission on first run; app
+  icon included). Requires the packaged `.app` bundle identity.
+- **Settings & layout persistence**: `scale`, `bubbleScale`, `reducedMotion`, `bubbleMode`,
+  `bubbleStates`, `soundEnabled`, `activityLevel` all configurable via DSH settings.
+  Pet position and menu sizing persist across restarts via
+  `~/Library/Application Support/dsh-dafeiyu/layout.json`.
+- **Content-driven window sizing**: the panel shrinks to the pet alone when no bubble is
+  shown and grows to fit bubble/card columns.
 - **Stability hardening**: invalid JSON and unknown message kinds are logged to stderr and
-  ignored (never crash). Missing assets fail fast with exit code 2.
+  ignored (never crash). Missing assets fail fast with exit code 2. NSApplication event
+  loop runs in visual mode (bare RunLoop would never dispatch mouse events).
 
 ### Changed
 
 - Platform limited to **macOS Apple Silicon (arm64)** — no Intel Mac, Windows, or Linux.
 - Helper is now built from `runtime/macos/` (SwiftPM) instead of `runtime/helper.py`.
 - `package.json`: `cpu` narrowed to `["arm64"]`, `os` to `["darwin"]`, `files`
-  pruned of Python/Windows assets, `scripts` updated to macOS-only.
+  pruned of Python/Windows assets and now includes the packaged `DafeiyuHelper.app`.
+- `scripts/package-macos-app.sh` assembles the signed app bundle (Info.plist, assets,
+  icon, adhoc code signature).
 
 ### Removed
 

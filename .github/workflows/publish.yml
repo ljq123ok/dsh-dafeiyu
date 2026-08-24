@@ -73,9 +73,59 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build-macos-package:
+    name: Build and verify macOS Apple Silicon package
+    runs-on: macos-15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.21.0
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run JavaScript tests
+        run: npm test
+
+      - name: Build and package macOS Helper (.app)
+        run: |
+          npm run build:helper:mac:app
+
+      - name: Verify app bundle signature and archive contents
+        run: |
+          app=runtime/bin/darwin-arm64/DafeiyuHelper.app
+          codesign --verify --deep -v "$app"
+          test -x "$app/Contents/MacOS/dsh-dafeiyu-helper"
+          test -f "$app/Contents/Info.plist"
+          test -f "$app/Contents/Resources/DafeiyuHelper.icns"
+
+      - name: Create npm archive
+        run: npm pack
+
+      - name: Upload verified archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: dsh-dafeiyu-*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish with npm trusted publishing
-    needs: build-windows-package
+    needs:
+      - build-windows-package
+      - build-macos-package
     runs-on: ubuntu-latest
     permissions:
       contents: write

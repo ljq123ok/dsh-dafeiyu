@@ -26,7 +26,8 @@
     "README_EN.md",
     "CHANGELOG.md",
     "ASSET_LICENSE.md",
-    "LICENSE"
+    "LICENSE",
+    "runtime/bin/darwin-arm64/DafeiyuHelper.app/"
   ],
   "cpu": [
     "arm64"
@@ -46,7 +47,8 @@
     "test:ui": "node test/fixtures/ui-acceptance.js",
     "build:helper:mac": "swift build --package-path runtime/macos -c release --arch arm64 && mkdir -p runtime/bin/darwin-arm64 && cp runtime/macos/.build/release/DafeiyuHelper runtime/bin/darwin-arm64/dsh-dafeiyu-helper && chmod +x runtime/bin/darwin-arm64/dsh-dafeiyu-helper",
     "test:helper:mac:headless": "runtime/bin/darwin-arm64/dsh-dafeiyu-helper --headless",
-    "test:helper:packaged": "node scripts/test-packaged-helper.mjs"
+    "test:helper:packaged": "node scripts/test-packaged-helper.mjs",
+    "build:helper:mac:app": "bash scripts/package-macos-app.sh"
   },
   "dsh": {
     "client": {

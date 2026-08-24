@@ -40,6 +40,11 @@ final class PetWindow: NSWindow {
   var onOverlayReturn: (() -> Void)?
   /// Timer that triggers the return after the interaction's TTL.
   private var interactionTimer: Timer?
+  /// Step12 (completion shake): the window wobbles left-right for a few frames
+  /// on SUCCESS/ERROR, mirroring the original v0.1.5 shakeWindow.
+  private var shakeTimer: Timer?
+  private var shakeOrigin: NSPoint?
+  private var shakeIndex = 0
   /// Unscaled panel size (pet + reserved bubble column + reserved card row).
   /// `applyScale` and the initial init multiply this by the current scale.
   private let baseSize: NSSize
@@ -158,6 +163,39 @@ final class PetWindow: NSWindow {
     petView.frame = NSRect(origin: .zero, size: newSize)
     updateContentSize()
     saveLayout()
+  }
+
+  /// Step12: shake the window left-right on a completion event (SUCCESS/ERROR),
+  /// ported from v0.1.5 `shakeWindow`: 6 offsets ±6/±4/±2 then back to origin at
+  /// 0.03 s per tick. Only the window frame moves; the pet/bubble stay inside.
+  @MainActor
+  func shakeWindow() {
+    shakeTimer?.invalidate()
+    shakeOrigin = frame.origin
+    shakeIndex = 0
+    shakeTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) {
+      [weak self] _ in
+      MainActor.assumeIsolated { self?.shakeTick() }
+    }
+  }
+
+  @MainActor
+  private func shakeTick() {
+    guard let origin = shakeOrigin else {
+      shakeTimer?.invalidate()
+      shakeTimer = nil
+      return
+    }
+    let offsets: [(CGFloat, CGFloat)] = [(6, 0), (-6, 0), (4, 0), (-4, 0), (2, 0), (-2, 0), (0, 0)]
+    if shakeIndex < offsets.count {
+      let offset = offsets[shakeIndex]
+      setFrameOrigin(NSPoint(x: origin.x + offset.0, y: origin.y + offset.1))
+      shakeIndex += 1
+    } else {
+      shakeTimer?.invalidate()
+      shakeTimer = nil
+      setFrameOrigin(origin)
+    }
   }
 
   /// Step12: resize the panel to fit exactly what is shown — the pet alone when

@@ -124,6 +124,9 @@ func notifyCompletionIfNeeded(state: String, message: String?, detail: String?) 
   // startup, live CONFIG afterwards). Same dedup as the banner, so a PULSE→STATE
   // echo of one completion never double-chimes.
   SoundPlayer.playCompletion(state: state, enabled: companionModel.configSoundEnabled)
+  // Step12: completion shake — the pet window wobbles on SUCCESS/ERROR (visual
+  // feedback alongside the chime), never in headless (guarded by the caller).
+  petWindow?.shakeWindow()
 }
 
 // MARK: - Argument parsing
@@ -184,6 +187,9 @@ if !isHeadless {
     applyEnvConfig()
     let store = try ManifestStore(assetRootOverride: assetRootOverride)
     manifestStore = store
+    // Step12: the completion sounds come from the bundled assets (success/error
+    // wav, v0.1.5 originals), resolved against the same asset root as the clips.
+    SoundPlayer.soundRoot = store.assetRoot
     let idle = try store.idleClip()
     let window = PetWindow(clip: idle, scale: CGFloat(companionModel.configScale))
     petWindow = window // retain the window for the lifetime of the run loop

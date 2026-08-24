@@ -1,11 +1,12 @@
 // SoundPlayer (M2 completion sounds).
 //
-// Plays a completion chime for SUCCESS/ERROR via NSSound — Apple's built-in
-// system sounds (/System/Library/Sounds), so no asset bundle, no network, no
-// permission prompt, and no bundle identity is required (unlike
-// UNUserNotificationCenter, which aborts a bare CLI). The pet is the helper's
-// single completion-audio source; DSHNotifier banners are visual-only so a
-// completion never double-dings.
+// Plays a completion chime for SUCCESS/ERROR via NSSound. The sound comes from
+// the bundled assets: `assets/sounds/success.wav` / `error.wav` (the original
+// v0.1.5 chimes), located beneath `soundRoot` (the app's asset root, set by
+// main.swift). When the wav is missing (e.g. a dev checkout) it falls back to
+// the Apple system sounds "Glass"/"Basso". The pet is the helper's single
+// completion-audio source; DSHNotifier banners are visual-only so a completion
+// never double-dings.
 //
 // Discipline (mirrors DSHNotifier, plan §4.1/§6):
 //   - Gated by the `soundEnabled` config (CONFIG message / DSH_DAFEIYU_SOUND_ENABLED
@@ -32,28 +33,36 @@ enum SoundPlayer {
   /// negligible; a newer completion simply replaces it.
   private static var activeSound: NSSound?
 
+  /// Asset root that contains `assets/sounds/success.wav` / `error.wav`
+  /// (the original v0.1.5 chimes). Set by main.swift after the manifest loads.
+  static var soundRoot: URL?
+
   /// Play the completion chime for a completion state, unless sounds are
   /// disabled. Safe to call at any time — never blocks, never exits, never
   /// crashes.
   @MainActor
   static func playCompletion(state: String, enabled: Bool) {
     guard enabled else { return }
-    let name: String
-    let sound: NSSound?
+    let filename: String
     switch state {
-    case "SUCCESS":
-      // "Glass": bright, pleasant task-complete ding.
-      name = "Glass"
-      sound = NSSound(named: "Glass")
-    case "ERROR":
-      // "Basso": low, unmistakably-wrong growl — distinct from any success cue.
-      name = "Basso"
-      sound = NSSound(named: "Basso")
-    default:
-      return
+    case "SUCCESS": filename = "success"
+    case "ERROR": filename = "error"
+    default: return
     }
+    // Prefer the original bundled chime; fall back to the built-in system sound
+    // (Glass/Basso) when the wav is absent (e.g. dev checkout without assets).
+    var sound: NSSound?
+    if let root = soundRoot {
+      let url = root.appendingPathComponent("assets/sounds/\(filename).wav")
+      sound = NSSound(contentsOf: url, byReference: true)
+      if sound == nil {
+        log("assets/sounds/\(filename).wav not found; falling back to system sound")
+      }
+    }
+    let fallbackName = state == "SUCCESS" ? "Glass" : "Basso"
+    sound = sound ?? NSSound(named: fallbackName)
     guard let sound else {
-      log("system sound '\(name)' not found; skipping completion sound")
+      log("no completion sound available for '\(filename)'")
       return
     }
     // Step12: max volume explicitly — NSSound defaults to the system alert
@@ -64,7 +73,7 @@ enum SoundPlayer {
     activeSound = sound
     if !sound.play() {
       activeSound = nil
-      log("failed to start system sound '\(name)'")
+      log("failed to start completion sound '\(filename)'")
     }
   }
 

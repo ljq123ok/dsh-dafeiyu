@@ -19,6 +19,7 @@
     "runtime/macos/",
     "assets/pet/",
     "assets/pet-manifest.json",
+    "assets/sounds/",
     "docs/",
     "cordis.patch.yml",
     "README.md",

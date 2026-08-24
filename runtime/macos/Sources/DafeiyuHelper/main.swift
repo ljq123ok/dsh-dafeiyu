@@ -61,6 +61,24 @@ func logToStderr(_ message: String) {
   stderrHandle.write(Data("dsh-dafeiyu-helper: \(message)\n".utf8))
 }
 
+// MARK: - Step11 debug tracing (diagnose interaction; writes to a file so the
+// DSH UI log does not need to be inspected. Remove after the drag issue is fixed.)
+
+private let petDebugURL = URL(fileURLWithPath: "/tmp/dsh-pet-debug.log")
+
+func petDebugLog(_ message: String) {
+  let line = "\(Date()) \(message)\n"
+  if let data = line.data(using: .utf8) {
+    if let handle = try? FileHandle(forWritingTo: petDebugURL) {
+      handle.seekToEndOfFile()
+      handle.write(data)
+      try? handle.close()
+    } else {
+      try? data.write(to: petDebugURL)
+    }
+  }
+}
+
 // MARK: - Step8 notifications
 
 /// Last delivered completion notification, keyed by (state, message, detail).
@@ -272,7 +290,20 @@ Task {
 }
 
 // Keep the process alive while the async reader runs.
-RunLoop.main.run()
+//
+// Step11: visual mode must run the AppKit event loop (`NSApplication.run`), not
+// a bare `RunLoop.main.run()`. Mouse events (mouseDown/mouseDragged on the pet
+// view) are dispatched by NSApplication's event loop; `RunLoop.main.run()` only
+// services timers and input sources, so a window could be visible and animated
+// but never receive a click — the root cause of "cannot drag". `NSApplication.run`
+// internally runs the main run loop, so the frame timer and the stdin async
+// reader keep working. Headless mode never creates windows and keeps the bare
+// run loop (byte-identical protocol behavior).
+if isHeadless {
+  RunLoop.main.run()
+} else {
+  NSApplication.shared.run()
+}
 
 // MARK: - Line handling
 

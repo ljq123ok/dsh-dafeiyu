@@ -101,6 +101,7 @@ final class PetWindow: NSWindow {
     orderFrontRegardless()
 
     showClip(clip)
+    petDebugLog("window created: frame=\(frame) size=\(size) level=\(level.rawValue) ignores=\(ignoresMouseEvents) opaque=\(isOpaque) visible=\(isVisible) screens=\(NSScreen.screens.map { $0.visibleFrame })")
   }
 
   /// Step7: resize the panel to a new scale, keeping the current origin (bottom-left)

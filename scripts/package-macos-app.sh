@@ -31,6 +31,22 @@ echo "assembling $APP..."
 rm -rf "$APP"
 mkdir -p "$(dirname "$BIN")" "$APP/Contents/Resources"
 cp "$ROOT/runtime/macos/Info.plist" "$APP/Contents/Info.plist"
+# App icon: generate the .icns from the idle pet PNG (centered crop to square)
+# if it is not already present under assets/ (dev builds regenerate).
+ICNS="$ROOT/assets/DafeiyuHelper.icns"
+if [ ! -f "$ICNS" ]; then
+  echo "generating app icon..."
+  WORK="$(mktemp -d)"
+  trap 'rm -rf "$WORK"' EXIT
+  mkdir -p "$WORK/iconset"
+  sips -c 195 195 "$ROOT/assets/pet/idle_front/idle_front_238.png" --out "$WORK/square.png" >/dev/null 2>&1
+  for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" "$WORK/square.png" --out "$WORK/iconset/icon_${size}x${size}.png" >/dev/null 2>&1
+    sips -z "$((size * 2))" "$((size * 2))" "$WORK/square.png" --out "$WORK/iconset/icon_${size}x${size}@2x.png" >/dev/null 2>&1
+  done
+  iconutil -c icns "$WORK/iconset" -o "$ICNS"
+fi
+cp "$ICNS" "$APP/Contents/Resources/DafeiyuHelper.icns"
 # ditto (not cp -R): excludes source extended attributes (com.apple.fileprovider.*),
 # which make codesign reject the bundle with "detritus not allowed".
 ditto "$ROOT/assets" "$APP/Contents/Resources/assets"

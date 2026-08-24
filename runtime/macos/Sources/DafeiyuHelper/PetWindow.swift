@@ -107,6 +107,11 @@ final class PetWindow: NSWindow {
     petView.onRequestMenu = { [weak self] in
       self?.buildContextMenu()
     }
+    // Step12: bubble/card visibility changes resize the window to fit the shown
+    // content (pet alone when no overlay is visible).
+    petView.onOverlayChanged = { [weak self] in
+      self?.updateContentSize()
+    }
 
     if let screen = NSScreen.main {
       let origin = NSPoint(
@@ -123,6 +128,9 @@ final class PetWindow: NSWindow {
     orderFrontRegardless()
 
     showClip(clip)
+    // Step12: shrink to content immediately (pet alone at startup; the window
+    // grows when the first bubble/card arrives).
+    updateContentSize()
     petDebugLog("window created: frame=\(frame) size=\(size) level=\(level.rawValue) ignores=\(ignoresMouseEvents) opaque=\(isOpaque) visible=\(isVisible) screens=\(NSScreen.screens.map { $0.visibleFrame })")
   }
 
@@ -136,7 +144,40 @@ final class PetWindow: NSWindow {
     let current = frame
     setFrame(NSRect(origin: current.origin, size: newSize), display: true)
     petView.frame = NSRect(origin: .zero, size: newSize)
+    updateContentSize()
     saveLayout()
+  }
+
+  /// Step12: resize the panel to fit exactly what is shown — the pet alone when
+  /// no overlay is visible (a much smaller window), plus the bubble column when
+  /// the bubble shows and the card row when the card shows. The origin (bottom-
+  /// left) is kept anchored. Called after every bubble/card state change.
+  func updateContentSize() {
+    // Step12: size the panel to exactly what draw() paints. The bubble column is
+    // 240pt wide plus an 8pt gap right of the pet, scaled by bubbleScale; the card
+    // block is rows×22pt + 12 + 8, scaled by bubbleScale. Mirrored constants with
+    // PetView.draw so the content always fits (and the window shrinks to the pet
+    // alone when no overlay is shown).
+    let petSize = PetView.fittingSize(for: petView.currentImage.map { [$0] } ?? [])
+    let petW = petSize.width * petView.scale
+    let petH = petSize.height * petView.scale
+
+    var width = petW
+    var height = petH + 8 + 8
+
+    if petView.bubbleVisible {
+      width += (240 + 8) * petView.bubbleScale + 8
+    }
+    let rows = petView.cardVisibleRows
+    if rows > 0 {
+      height += CGFloat(rows) * 22 * petView.bubbleScale + 12 + 8
+    }
+
+    let newSize = NSSize(width: max(width, petW + 1), height: max(height, petH + 1))
+    guard newSize != frame.size else { return }
+    let current = frame
+    setFrame(NSRect(origin: current.origin, size: newSize), display: true)
+    petView.frame = NSRect(origin: .zero, size: newSize)
   }
 
   /// Step7: move the window by the drag displacement, clamped so the panel stays

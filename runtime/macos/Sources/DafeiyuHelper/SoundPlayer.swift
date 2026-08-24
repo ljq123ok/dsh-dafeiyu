@@ -56,6 +56,11 @@ enum SoundPlayer {
       log("system sound '\(name)' not found; skipping completion sound")
       return
     }
+    // Step12: max volume explicitly — NSSound defaults to the system alert
+    // volume, which can be much lower than 1.0 when the user's alert slider is
+    // turned down. Setting volume to 1.0 makes the chime as loud as the sound
+    // file allows (the OS alert volume is the only remaining limiter).
+    sound.volume = 1.0
     activeSound = sound
     if !sound.play() {
       activeSound = nil

@@ -36,6 +36,11 @@ final class PetView: NSView {
   /// own hop override in `drawPet`, so the name must be available at draw time.
   private var clipName: String?
 
+  /// Height of the card block (0 when hidden), captured in draw() so the bubble
+  /// and card overlays can anchor relative to the pet's actual position (Step12
+  /// content-driven layout; the pet rises above the card when the card shows).
+  private var currentCardBlockH: CGFloat = 0
+
   // MARK: - Step6 overlay state
 
   /// Single-task bubble content (nil hides the bubble).
@@ -198,15 +203,22 @@ final class PetView: NSView {
   // MARK: - Step6 overlay API
 
   /// Update the single-task bubble (pass nil to hide it).
+  /// Fired when bubble/card visibility may have changed, so PetWindow can
+  /// resize (shrink to the pet alone when no overlay is shown). Wired by main.swift
+  /// alongside `updateContentSize`.
+  var onOverlayChanged: (() -> Void)?
+
   func setBubble(_ info: TaskInfo?) {
     bubble = info
     needsDisplay = true
+    onOverlayChanged?()
   }
 
   /// Update the multi-task card (pass nil or an empty list to hide it).
   func setCard(_ items: [TaskItem]?) {
     card = items ?? []
     needsDisplay = true
+    onOverlayChanged?()
   }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -217,9 +229,17 @@ final class PetView: NSView {
     // inside the view's own bounds, so nothing relies on AppKit's default
     // non-clipping behavior to stay visible.
     let petSize = NSSize(width: image.size.width * scale, height: image.size.height * scale)
+    // Step12: content-driven layout. The pet sits at the bottom (8pt edge) and
+    // rises above the card when the card shows; the bubble hangs off the pet's
+    // right edge. Nothing relies on the fixed reserved constants for position —
+    // the window is sized to fit (PetWindow.updateContentSize), so overlays
+    // always land inside the panel.
+    let cardRows = cardVisibleRows
+    let cardBlockH = cardRows > 0 ? (CGFloat(cardRows) * 22 * bubbleScale + 12 + 8) : 0
+    currentCardBlockH = cardBlockH
     let petRect = NSRect(
       x: 0,
-      y: Self.cardReservedHeight * scale,
+      y: cardBlockH + 8,
       width: petSize.width,
       height: petSize.height
     )
@@ -344,7 +364,7 @@ final class PetView: NSView {
     context.saveGraphicsState()
     defer { context.restoreGraphicsState() }
     let cg = context.cgContext
-    cg.translateBy(x: imageSize.width + 8, y: Self.cardReservedHeight * scale + 12)
+    cg.translateBy(x: imageSize.width + 8, y: currentCardBlockH + imageSize.height + 12)
     cg.scaleBy(x: bubbleScale, y: bubbleScale)
 
     // Bubble background (semi-transparent dark so white text reads on any pet frame).
@@ -354,9 +374,11 @@ final class PetView: NSView {
 
     var cursorY = bubbleRect.maxY - 10
     for line in lines {
-      let size = line.size()
-      line.draw(at: NSPoint(x: bubbleRect.minX + 10, y: cursorY - size.height))
-      cursorY -= size.height
+      // Step12: draw within the bubble's single text line (10pt insets), so a
+      // long line tail-truncates instead of spilling past the bubble edge.
+      let lineRect = NSRect(x: bubbleRect.minX + 10, y: cursorY - 18, width: bubbleRect.width - 20, height: 18)
+      line.draw(with: lineRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
+      cursorY -= line.size().height
     }
 
     if let progressBar {
@@ -384,10 +406,10 @@ final class PetView: NSView {
     context.saveGraphicsState()
     defer { context.restoreGraphicsState() }
     let cg = context.cgContext
-    cg.translateBy(x: max(0, (petWidth - cardWidth) / 2), y: Self.cardReservedHeight * scale - 8)
+    cg.translateBy(x: max(0, (petWidth - cardWidth) / 2), y: 8)
     cg.scaleBy(x: bubbleScale, y: bubbleScale)
 
-    let cardRect = NSRect(x: 0, y: -cardHeight, width: cardWidth, height: cardHeight)
+    let cardRect = NSRect(x: 0, y: 0, width: cardWidth, height: cardHeight)
     let path = NSBezierPath(roundedRect: cardRect, xRadius: 10, yRadius: 10)
     NSColor(calibratedWhite: 0.12, alpha: 0.82).setFill()
     path.fill()
@@ -421,11 +443,36 @@ final class PetView: NSView {
     }
   }
 
+  // MARK: - Overlay visibility (PetWindow sizing)
+
+  /// Whether the single-task bubble is currently drawn (per bubble mode filter).
+  var bubbleVisible: Bool {
+    bubble != nil && bubbleFilter(stateForBubble)
+  }
+
+  /// Number of task rows the multi-task card would draw (0 = card hidden).
+  var cardVisibleRows: Int {
+    guard !card.isEmpty else { return 0 }
+    return card.filter { bubbleFilter($0.state) }.count >= 2
+      ? min(card.filter { bubbleFilter($0.state) }.count, 5)
+      : 0
+  }
+
   private func attributed(_ string: String, size: CGFloat, bold: Bool) -> NSAttributedString {
     let font = bold ? NSFont.boldSystemFont(ofSize: size) : NSFont.systemFont(ofSize: size)
+    // Step12: tail truncation for every overlay string. `draw(with:)` on an
+    // NSAttributedString only clips when the paragraph style allows it; without
+    // this, a long task title draws (and clips!) past the card edge — the
+    // "文字显示不全" bug.
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byTruncatingTail
     return NSAttributedString(
       string: string,
-      attributes: [.font: font, .foregroundColor: NSColor.white]
+      attributes: [
+        .font: font,
+        .foregroundColor: NSColor.white,
+        .paragraphStyle: paragraph,
+      ]
     )
   }
 

@@ -119,31 +119,22 @@ final class PetView: NSView {
   override var acceptsFirstResponder: Bool { true }
 
   override func mouseDown(with event: NSEvent) {
-    guard let window else {
-      petDebugLog("mouseDown: no window")
-      return
-    }
+    guard let window else { return }
     // Step11: make the window key (NSPanel could never become key; ordinary
     // NSWindow can, so this now succeeds and mouseDragged fires).
-    let madeKey = window.makeKeyAndOrderFront(nil)
-    let firstResponder = window.makeFirstResponder(self)
-    petDebugLog("mouseDown: madeKey=\(madeKey) fr=\(firstResponder) origin=\(window.frame.origin) loc=\(NSEvent.mouseLocation) keyWindow=\(window.isKeyWindow) canBecomeKey=\(window.canBecomeKey)")
+    window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(self)
     dragStartScreen = NSEvent.mouseLocation
     dragStartWindowOrigin = window.frame.origin
   }
 
   override func mouseDragged(with event: NSEvent) {
-    guard let start = dragStartScreen, let base = dragStartWindowOrigin, window != nil else {
-      petDebugLog("mouseDragged: no drag state")
-      return
-    }
+    guard let start = dragStartScreen, let base = dragStartWindowOrigin, window != nil else { return }
     let now = NSEvent.mouseLocation
-    petDebugLog("mouseDragged: delta=\(now.x - start.x),\(now.y - start.y)")
     onDragDelta?(base, now.x - start.x, now.y - start.y)
   }
 
   override func mouseUp(with event: NSEvent) {
-    petDebugLog("mouseUp")
     dragStartScreen = nil
     dragStartWindowOrigin = nil
     window?.resignKey()
@@ -414,7 +405,11 @@ final class PetView: NSView {
     NSColor(calibratedWhite: 0.12, alpha: 0.82).setFill()
     path.fill()
 
-    var y = cardRect.maxY - 8 - rowHeight
+    // Step12: each row occupies [y - rowHeight, y], walking down from the card
+    // top inset (8pt). The previous code double-subtracted rowHeight here (both
+    // the start and the textColumn), pushing every row below the card's first
+    // line — the second row was drawn past the card/window bottom and clipped.
+    var y = cardRect.maxY - 8
     for (index, item) in items.prefix(5).enumerated() {
       let label = "\(statusMark(item.state)) \(item.title ?? item.message ?? "…")"
       let text = attributed(label, size: 12, bold: index == 0)

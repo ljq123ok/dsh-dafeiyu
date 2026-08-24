@@ -77,6 +77,18 @@ final class PetView: NSView {
   private var dragStartScreen: NSPoint?
   private var dragStartWindowOrigin: NSPoint?
 
+  // MARK: - Step11 right-click menu
+
+  /// Builds the context menu (size/bubble-size/etc.). Wired by PetWindow, which
+  /// owns the actual menu items and their actions.
+  var onRequestMenu: (() -> NSMenu?)?
+
+  /// NSView.menu(for:) is where a right-click hands the menu to a view. The pet
+  /// view covers the whole window, so every right-click on the pet routes here.
+  override func menu(for event: NSEvent) -> NSMenu? {
+    onRequestMenu?()
+  }
+
   override var isOpaque: Bool { false }
 
   /// The nonactivating panel is never key; accept the first click so a drag can

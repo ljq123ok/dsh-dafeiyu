@@ -29,6 +29,9 @@ import AppKit
 final class PetWindow: NSWindow {
   let petView = PetView()
   private var frameTimer: Timer?
+  /// Last clip passed to `showClip` — kept so the reduced-motion toggle can
+  /// re-show it (restarting/stopping the frame timer per the new setting).
+  private var lastClip: ResolvedClip?
   /// Unscaled panel size (pet + reserved bubble column + reserved card row).
   /// `applyScale` and the initial init multiply this by the current scale.
   private let baseSize: NSSize
@@ -38,14 +41,27 @@ final class PetWindow: NSWindow {
   /// position (Step7: drag persistence). `scale` (default 1) is the initial CONFIG/env
   /// scale used to size the panel.
   init(clip: ResolvedClip, scale: CGFloat = 1) {
+    // Step11: a saved menu scale (right-click menu) overrides the env default when
+    // present — env is the startup value, but the persisted menu choice wins so the
+    // pet keeps the size the user picked. The bubble scale is read the same way.
+    var initialScale = scale
+    var initialBubbleScale: CGFloat? = nil
+    if let layout = LayoutStore.load() {
+      if let savedScale = layout.scale {
+        initialScale = CGFloat(savedScale)
+      }
+      if let savedBubble = layout.bubbleScale {
+        initialBubbleScale = CGFloat(savedBubble)
+      }
+    }
     let petSize = PetView.fittingSize(for: clip.frames)
     baseSize = NSSize(
       width: petSize.width + PetView.bubbleReservedWidth,
       height: petSize.height + PetView.cardReservedHeight
     )
     let size = NSSize(
-      width: baseSize.width * scale,
-      height: baseSize.height * scale
+      width: baseSize.width * initialScale,
+      height: baseSize.height * initialScale
     )
     super.init(
       contentRect: NSRect(origin: .zero, size: size),
@@ -72,7 +88,8 @@ final class PetWindow: NSWindow {
     // Step7: let the view know its current scale; Step6 view covers the whole panel
     // (pet + reserved bubble column on the right + reserved card row below), so every
     // overlay is drawn inside the view's own bounds and the panel.
-    petView.scale = scale
+    petView.scale = initialScale
+    petView.bubbleScale = initialBubbleScale ?? 1
     petView.frame = NSRect(origin: .zero, size: size)
     contentView = petView
 
@@ -84,6 +101,11 @@ final class PetWindow: NSWindow {
     }
     petView.onDragEnded = { [weak self] in
       self?.saveLayout()
+    }
+    // Step11: right-click on the pet shows the context menu. NSView.menu(for:)
+    // routes the event here via the PetView callback.
+    petView.onRequestMenu = { [weak self] in
+      self?.buildContextMenu()
     }
 
     if let screen = NSScreen.main {
@@ -105,7 +127,8 @@ final class PetWindow: NSWindow {
   }
 
   /// Step7: resize the panel to a new scale, keeping the current origin (bottom-left)
-  /// anchored. The pet view covers the whole (new) panel afterwards.
+  /// anchored. The pet view covers the whole (new) panel afterwards. Step11: the
+  /// right-click menu also calls this, so it persists the new scale too.
   func applyScale(_ s: CGFloat) {
     let clamped = max(0.7, min(1.4, s))
     petView.scale = clamped
@@ -113,6 +136,7 @@ final class PetWindow: NSWindow {
     let current = frame
     setFrame(NSRect(origin: current.origin, size: newSize), display: true)
     petView.frame = NSRect(origin: .zero, size: newSize)
+    saveLayout()
   }
 
   /// Step7: move the window by the drag displacement, clamped so the panel stays
@@ -123,9 +147,123 @@ final class PetWindow: NSWindow {
   }
 
   /// Step7: persist the current origin to LayoutStore (non-critical; save failure is
-  /// logged, never fatal).
+  /// logged, never fatal). Step11: also persist the menu-driven scale/bubbleScale so
+  /// the size choice survives a restart.
   func saveLayout() {
-    LayoutStore.save(LayoutState(x: Double(frame.origin.x), y: Double(frame.origin.y)))
+    LayoutStore.save(LayoutState(
+      x: Double(frame.origin.x),
+      y: Double(frame.origin.y),
+      scale: petView.scale,
+      bubbleScale: petView.bubbleScale
+    ))
+  }
+
+  /// Step11: set a new bubble/card scale (0.8–1.2) from the right-click menu.
+  func applyBubbleScale(_ s: CGFloat) {
+    let clamped = max(0.8, min(1.2, s))
+    petView.bubbleScale = clamped
+    petView.needsDisplay = true
+    saveLayout()
+  }
+
+  // MARK: - Step11 right-click menu
+
+  /// Right-click menu: size / bubble-size / reduced-motion / WebUI / hide / quit.
+  /// Mirrors the original Python version's context menu. Rebuilt each time so
+  /// checkmarks reflect the current state; actions apply live and persist via
+  /// LayoutStore (size/bubble size only). NSView.menu(for:) is the AppKit hook,
+  /// so PetView routes right-clicks here through `onRequestMenu`.
+  func buildContextMenu() -> NSMenu {
+    let menu = NSMenu()
+
+    let sizeMenu = NSMenu()
+    for (label, value) in [("小", 0.8), ("标准", 1.0), ("大", 1.25)] {
+      let item = NSMenuItem(title: label, action: #selector(applyMenuScale(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = value
+      item.state = abs(petView.scale - value) < 0.01 ? .on : .off
+      sizeMenu.addItem(item)
+    }
+    let sizeItem = NSMenuItem(title: "大小", action: nil, keyEquivalent: "")
+    sizeItem.submenu = sizeMenu
+    menu.addItem(sizeItem)
+
+    let bubbleMenu = NSMenu()
+    for (label, value) in [("小", 0.8), ("标准", 1.0), ("大", 1.2)] {
+      let item = NSMenuItem(title: label, action: #selector(applyMenuBubbleScale(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = value
+      item.state = abs(petView.bubbleScale - value) < 0.01 ? .on : .off
+      bubbleMenu.addItem(item)
+    }
+    let bubbleItem = NSMenuItem(title: "气泡大小", action: nil, keyEquivalent: "")
+    bubbleItem.submenu = bubbleMenu
+    menu.addItem(bubbleItem)
+
+    let reducedItem = NSMenuItem(title: "减少动态", action: #selector(toggleReducedMotion(_:)), keyEquivalent: "")
+    reducedItem.target = self
+    reducedItem.state = petView.reducedMotion ? .on : .off
+    menu.addItem(reducedItem)
+
+    menu.addItem(.separator())
+
+    let openItem = NSMenuItem(title: "打开 WebUI", action: #selector(openWebUI(_:)), keyEquivalent: "")
+    openItem.target = self
+    menu.addItem(openItem)
+
+    let hideItem = NSMenuItem(title: "本次隐藏", action: #selector(hidePet(_:)), keyEquivalent: "")
+    hideItem.target = self
+    menu.addItem(hideItem)
+
+    let exitItem = NSMenuItem(title: "本次关闭", action: #selector(closePet(_:)), keyEquivalent: "")
+    exitItem.target = self
+    menu.addItem(exitItem)
+
+    return menu
+  }
+
+  @objc private func applyMenuScale(_ sender: NSMenuItem) {
+    guard let value = sender.representedObject as? NSNumber else { return }
+    applyScale(value.doubleValue)
+    logToStderr("menu scale -> \(value.doubleValue) (resized to \(frame.size))")
+  }
+
+  @objc private func applyMenuBubbleScale(_ sender: NSMenuItem) {
+    guard let value = sender.representedObject as? NSNumber else { return }
+    applyBubbleScale(value.doubleValue)
+  }
+
+  @objc private func toggleReducedMotion(_ sender: NSMenuItem) {
+    petView.reducedMotion.toggle()
+    logToStderr("menu reducedMotion -> \(petView.reducedMotion)")
+    // Re-show the current clip: showClip re-evaluates `reducedMotion && loops`
+    // and stops/starts the frame timer accordingly (a looping clip freezes on
+    // its first frame when reduced motion is on).
+    if let clip = lastClip {
+      showClip(clip)
+    } else {
+      petView.needsDisplay = true
+    }
+  }
+
+  @objc private func openWebUI(_ sender: NSMenuItem) {
+    if let url = URL(string: "http://127.0.0.1:3080") {
+      NSWorkspace.shared.open(url)
+    }
+  }
+
+  @objc private func hidePet(_ sender: NSMenuItem) {
+    orderOut(nil)
+    petDebugLog("menu: hidden (right-click on the hidden pet is gone; re-show at next helper launch)")
+  }
+
+  @objc private func closePet(_ sender: NSMenuItem) {
+    petDebugLog("menu: closing (CLOSED reply, no restart)")
+    // Tell the Node side not to restart the helper: the original Python version
+    // emitted `closed`; the Node sets restartSuppressed on that reply. The helper
+    // then exits — the user asked to close this pet session.
+    emitClosed(reason: "user")
+    NSApplication.shared.terminate(nil)
   }
 
   /// Clamp `origin` so the panel stays at least fully inside the visible frame of the
@@ -160,6 +298,7 @@ final class PetWindow: NSWindow {
   func showClip(_ clip: ResolvedClip) {
     frameTimer?.invalidate()
     frameTimer = nil
+    lastClip = clip
 
     petView.setClip(clip.frames, loops: clip.loops)
     if petView.reducedMotion && clip.loops { return }

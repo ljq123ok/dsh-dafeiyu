@@ -40,6 +40,21 @@ struct PongMessage: Encodable {
   let timestamp: Int
 }
 
+struct ClosedMessage: Encodable {
+  let protocolVersion: Int
+  let kind: String
+  let reason: String
+}
+
+/// Emit a CLOSED reply (Step11: the right-click "本次关闭" menu item). The Node
+/// side treats a CLOSED reply as "the user closed the pet — do not restart the
+/// helper", which matches the original Python version's `closed` emit. Only
+/// valid after READY; the call site is the menu action on the main thread.
+@MainActor
+func emitClosed(reason: String) {
+  writeJSON(ClosedMessage(protocolVersion: 1, kind: MessageKind.closed.rawValue, reason: reason))
+}
+
 enum MessageKind: String {
   case ready, ping, pong, shutdown, closed
   case state, hello, config, task, tasks, pulse

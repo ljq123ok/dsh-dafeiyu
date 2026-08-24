@@ -36,7 +36,11 @@
 // notification code at all.
 
 import Foundation
-import UserNotifications
+// @preconcurrency: UNNotificationSettings / UNUserNotificationCenter are not
+// marked Sendable by Apple; under a strict Swift 6 toolchain (CI) awaiting the
+// settings crosses a concurrency boundary and errors. The framework API is
+// main-actor-safe in practice — this simply keeps its conformance as warnings.
+@preconcurrency import UserNotifications
 
 enum DSHNotifier {
   /// Centralized entry point: decide and deliver. All failure paths are

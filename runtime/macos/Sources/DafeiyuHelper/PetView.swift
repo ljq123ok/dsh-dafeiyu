@@ -450,6 +450,24 @@ final class PetView: NSView {
     bubble != nil && bubbleFilter(stateForBubble)
   }
 
+  /// Height the bubble needs at the given content (0 when no bubble): message
+  /// + detail lines + 16pt padding + optional 12pt progress bar, min 34. Mirrors
+  /// drawBubble's height math so PetWindow can size the panel exactly.
+  var bubbleHeightNeeded: CGFloat {
+    guard let bubble else { return 0 }
+    var lines: [NSAttributedString] = []
+    if let message = bubble.message, !message.isEmpty {
+      lines.append(attributed(message, size: 13, bold: true))
+    }
+    if let detail = bubble.detail, !detail.isEmpty {
+      lines.append(attributed(detail, size: 12, bold: false))
+    }
+    var textHeight: CGFloat = 0
+    for line in lines { textHeight += line.size().height }
+    let hasBar = (bubble.completed ?? 0) > 0 && (bubble.total ?? 0) > 0
+    return max(34, textHeight + 16 + (hasBar ? 12 : 0))
+  }
+
   /// Number of task rows the multi-task card would draw (0 = card hidden).
   var cardVisibleRows: Int {
     guard !card.isEmpty else { return 0 }

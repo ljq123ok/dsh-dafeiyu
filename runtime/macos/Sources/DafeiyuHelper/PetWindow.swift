@@ -162,18 +162,28 @@ final class PetWindow: NSWindow {
     let petW = petSize.width * petView.scale
     let petH = petSize.height * petView.scale
 
-    var width = petW
+    var width = petW + 8 + 8
     var height = petH + 8 + 8
 
+    // Bubble column: sits right of the pet (8pt gap, 240pt wide, 8pt margin),
+    // scaled by bubbleScale. Its TOP must be inside the window — the bubble
+    // hangs above the pet's top edge (12pt) plus its own height.
     if petView.bubbleVisible {
-      width += (240 + 8) * petView.bubbleScale + 8
+      width += 240 * petView.bubbleScale
+      height = petH + 12 + petView.bubbleHeightNeeded * petView.bubbleScale + 8
     }
+    // Card block: sits below the pet, anchored at the window bottom.
     let rows = petView.cardVisibleRows
     if rows > 0 {
+      // The card is 260pt wide (scaled) and centered under the pet; when the pet
+      // is small (e.g. 0.6 mini) the card is wider than petW+16, so the window
+      // must widen to fit it — otherwise the card's right edge clips.
+      width = max(width, 260 * petView.bubbleScale + 16)
       height += CGFloat(rows) * 22 * petView.bubbleScale + 12 + 8
     }
 
     let newSize = NSSize(width: max(width, petW + 1), height: max(height, petH + 1))
+    petDebugLog("contentSize: pet=\(petW)x\(petH) bubble=\(petView.bubbleVisible) rows=\(rows) new=\(newSize) frame=\(frame.size)")
     guard newSize != frame.size else { return }
     let current = frame
     setFrame(NSRect(origin: current.origin, size: newSize), display: true)

@@ -13,7 +13,23 @@ const here = dirname(fileURLToPath(import.meta.url))
 const defaultHelperPath = resolve(here, '..', 'runtime', 'helper.py')
 const bundledHelperPath = resolve(here, '..', 'runtime', 'bin', 'win32-x64', 'dsh-dafeiyu-helper.exe')
 // Apple Silicon macOS helper (Swift/AppKit). Built locally via `npm run build:helper:mac`.
+// Preferred: the packaged .app (Contents/MacOS/dsh-dafeiyu-helper) so
+// Bundle.main resolves a real bundle identifier — required by
+// UNUserNotificationCenter for system notification banners. Dev installs keep
+// the plain binary as a fallback (no bundle id ⇒ notifications skipped).
+const bundledDarwinArm64HelperAppPath = resolve(here, '..', 'runtime', 'bin', 'darwin-arm64', 'DafeiyuHelper.app')
 const bundledDarwinArm64HelperPath = resolve(here, '..', 'runtime', 'bin', 'darwin-arm64', 'dsh-dafeiyu-helper')
+
+function resolveDarwinArm64HelperPath() {
+  // Node cannot exec a .app directory (EACCES), so when the packaged bundle
+  // exists we point at the binary INSIDE it: running from Contents/MacOS makes
+  // Bundle.main resolve the bundle identity (needed for notification banners).
+  if (existsSync(bundledDarwinArm64HelperAppPath)) {
+    const inBundle = resolve(bundledDarwinArm64HelperAppPath, 'Contents', 'MacOS', 'dsh-dafeiyu-helper')
+    if (existsSync(inBundle)) return inBundle
+  }
+  return bundledDarwinArm64HelperPath
+}
 
 function isWsl() {
   if (process.platform !== 'linux') return false
@@ -69,7 +85,7 @@ function resolveHelperLaunch({
   arch = process.arch,
   isWslEnv,
   bundledPath,
-  darwinArm64Path = bundledDarwinArm64HelperPath,
+  darwinArm64Path = resolveDarwinArm64HelperPath(),
   helperPath,
   pythonEnv,
   headless = false,
@@ -111,7 +127,8 @@ function defaultLaunch(headless = false) {
     arch: process.arch,
     isWslEnv: isWsl(),
     bundledPath: bundledHelperPath,
-    darwinArm64Path: bundledDarwinArm64HelperPath,
+    // No explicit darwinArm64Path: the default arg resolves the packaged .app
+    // (Contents/MacOS binary) when present, falling back to the bare dev binary.
     helperPath: defaultHelperPath,
     pythonEnv: process.env.DSH_DAFEIYU_PYTHON,
     headless,
@@ -125,7 +142,7 @@ function defaultCommand(headless = false) {
 function defaultArgs(command, helperPath) {
   if (command === bundledHelperPath) return []
   // Explicit override to the bundled Swift helper: never append the Python path.
-  if (command === bundledDarwinArm64HelperPath) return []
+  if (command === bundledDarwinArm64HelperAppPath || command === bundledDarwinArm64HelperPath) return []
   if (process.platform === 'win32' && /(^|[\\/])py(?:\.exe)?$/i.test(command)) {
     return ['-3', helperPath]
   }
@@ -383,7 +400,9 @@ export class HelperProcess {
 
 export {
   bundledHelperPath,
+  bundledDarwinArm64HelperAppPath,
   bundledDarwinArm64HelperPath,
+  resolveDarwinArm64HelperPath,
   defaultHelperPath,
   defaultArgs,
   defaultCmdExe,

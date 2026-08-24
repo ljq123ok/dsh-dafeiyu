@@ -54,11 +54,23 @@ final class ManifestStore {
   let manifest: PetManifest
   let assetRoot: URL
 
-  /// Resolve the repo-root `assets/` directory. `override` short-circuits the probe.
+  /// Resolve the `assets/` directory. `override` short-circuits the probe.
+  /// Order: 1) explicit `--asset-root` override, 2) the .app bundle's Resources
+  /// (packaged layout: `DafeiyuHelper.app/Contents/Resources/assets/…`), 3) the
+  /// repo/dev layout by walking up from the executable.
   static func locateAssetRoot(override: String?) throws -> URL {
     if let override = override {
       return URL(fileURLWithPath: override, isDirectory: true)
     }
+    // Packaged .app: assets live in Resources/assets/ and Bundle.main.resourceURL
+    // points at Contents/Resources.
+    if let resources = Bundle.main.resourceURL {
+      let candidate = resources.appendingPathComponent("assets/pet-manifest.json")
+      if FileManager.default.fileExists(atPath: candidate.path) {
+        return resources
+      }
+    }
+    // Dev repo: walk up from the executable (repo-root/assets).
     let executable = Bundle.main.executableURL
       ?? URL(fileURLWithPath: CommandLine.arguments[0])
     var dir = executable.deletingLastPathComponent()

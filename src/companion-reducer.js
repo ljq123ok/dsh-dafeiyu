@@ -231,7 +231,7 @@ export class CompanionReducer {
         return this.#toolResult(record, event)
 
       case 'user/message':
-        record.userInvolved = true
+        record.lastUserMessageAt = ++this.clock
         return this.#userMessage(record, event)
 
       case 'todo/write':
@@ -434,10 +434,11 @@ export class CompanionReducer {
       progress: undefined,
       project: undefined,
       subagent: false,
-      // Step12: true once a human message arrived in this session — marks the
-      // session as "attended" (the user is talking to it), so the companion can
-      // prefer unattended background sessions for its bubble/card.
-      userInvolved: false,
+      // Step12: monotonic clock tick of the latest human message in this session.
+      // The session with the NEWEST user/message is "the conversation you are
+      // looking at" (front tab) and is never shown by the companion; every other
+      // active session — even one the user wrote to earlier — is background work.
+      lastUserMessageAt: 0,
       lastSeq: -1,
       updatedAt: ++this.clock,
     }
@@ -477,22 +478,38 @@ export class CompanionReducer {
         },
       }
     }
-    // Step12: the bubble shows unattended background work, not the conversation
-    // the user is currently talking to. Sessions that have seen a human message
-    // (userInvolved) are excluded when any unattended active session exists; if
-    // every active session is user-involved, fall back to the full ranking so the
-    // companion still reports something rather than going silent.
-    const unattended = records.filter((record) =>
-      !record.userInvolved
+    // Step12: the bubble shows background work, NEVER the conversation the user
+    // is currently looking at. The front tab is the session whose latest
+    // user/message is the newest of all; it is excluded outright — the pet goes
+    // idle instead of mirroring the user's own screen. Every OTHER active session
+    // counts as background, even one the user wrote to earlier.
+    let front = undefined
+    for (const record of records) {
+      if (record.lastUserMessageAt > 0
+        && (!front || record.lastUserMessageAt > front.lastUserMessageAt)) {
+        front = record
+      }
+    }
+    const background = records.filter((record) =>
+      record.id !== front?.id
       && record.state !== CompanionState.IDLE
       && record.state !== CompanionState.DISCONNECTED
     )
-    const pool = unattended.length > 0 ? unattended : records
-    pool.sort((left, right) => {
+    if (background.length === 0) {
+      return {
+        record: {
+          id: 'dsh-host',
+          state: CompanionState.IDLE,
+          payload: { phase: 'no-background-task', message: 'DSH 空闲中' },
+          updatedAt: ++this.clock,
+        },
+      }
+    }
+    background.sort((left, right) => {
       const priority = (statePriority[right.state] ?? 0) - (statePriority[left.state] ?? 0)
       return priority || right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
     })
-    return { record: pool[0] }
+    return { record: background[0] }
   }
 
   #render(selection = this.#select()) {
@@ -516,12 +533,12 @@ export class CompanionReducer {
 
   #taskMessages() {
     const tasks = this.#activeTaskList()
-    // Show the card when at least two unattended sessions are active overall
-    // (the selected one + at least one other unattended session). After the
+    // Show the card when at least two background sessions are active overall
+    // (the selected one + at least one other background session). After the
     // selected session is excluded the card may hold a single row — by design
     // ("card shows the other background work").
     const activeTotal = [...this.sessions.values()]
-      .filter((record) => !record.userInvolved)
+      .filter((record) => record.id !== this.#frontTabId())
       .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
       .length
     if (activeTotal < 2 || tasks.length === 0) {
@@ -544,13 +561,33 @@ export class CompanionReducer {
     return [createMessage(CompanionMessageKind.TASKS, { tasks })]
   }
 
+  /// The session the user is currently looking at: the one with the newest
+  /// user/message (0 when the user has never written to any session in this run).
+  #frontTabId() {
+    let front = undefined
+    for (const record of this.sessions.values()) {
+      if (record.lastUserMessageAt > 0
+        && (!front || record.lastUserMessageAt > front.lastUserMessageAt)) {
+        front = record
+      }
+    }
+    return front?.id
+  }
+
   #activeTaskList() {
-    // The multi-task card lists unattended background sessions only — any session
-    // the human is talking to (userInvolved) is excluded, matching the bubble's
-    // selection rule. The selected session is also excluded (its state is already
-    // in the bubble), so the card shows the *other* background sessions.
+    // The multi-task card lists background sessions only — the front tab (newest
+    // user/message) is excluded, matching the bubble's selection rule. The
+    // selected session is also excluded (its state is already in the bubble), so
+    // the card shows the *other* background sessions.
+    let front = undefined
+    for (const record of this.sessions.values()) {
+      if (record.lastUserMessageAt > 0
+        && (!front || record.lastUserMessageAt > front.lastUserMessageAt)) {
+        front = record
+      }
+    }
     return [...this.sessions.values()]
-      .filter((record) => !record.userInvolved)
+      .filter((record) => record.id !== front?.id)
       .filter((record) => record.id !== this.selectedSessionId)
       .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
       .sort((left, right) => {

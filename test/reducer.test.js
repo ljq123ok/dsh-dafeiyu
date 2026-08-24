@@ -99,10 +99,15 @@ test('question tools show waiting and resume on result or user response', () => 
   }, 5))
   assert.equal(waitingForUser.state, CompanionState.WAITING)
 
+  // Step12: after the user replies, this session becomes the "front tab" (the
+  // conversation the user is looking at) — the companion shows background work
+  // only, so the bubble falls back to an idle placeholder instead of mirroring
+  // the front conversation's THINKING state.
   const [resumedFromUser] = reducer.handle(session, event('user/message', {
     message: { content: '继续' },
   }, 6))
-  assert.equal(resumedFromUser.state, CompanionState.THINKING)
+  assert.equal(resumedFromUser.state, CompanionState.IDLE)
+  assert.equal(resumedFromUser.sessionId, 'dsh-host')
 })
 
 test('tool failure pulses error without losing the underlying work state', () => {

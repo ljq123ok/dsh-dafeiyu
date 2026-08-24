@@ -16,10 +16,6 @@
     "src/",
     "lib/client.js",
     "runtime/bin/darwin-arm64/dsh-dafeiyu-helper",
-    "runtime/macos/",
-    "assets/pet/",
-    "assets/pet-manifest.json",
-    "assets/sounds/",
     "docs/",
     "cordis.patch.yml",
     "README.md",
@@ -27,7 +23,10 @@
     "CHANGELOG.md",
     "ASSET_LICENSE.md",
     "LICENSE",
-    "runtime/bin/darwin-arm64/DafeiyuHelper.app/"
+    "runtime/bin/darwin-arm64/DafeiyuHelper.app/",
+    "runtime/macos/Sources/",
+    "runtime/macos/Info.plist",
+    "runtime/macos/Package.swift"
   ],
   "cpu": [
     "arm64"

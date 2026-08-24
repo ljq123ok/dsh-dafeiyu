@@ -23,6 +23,7 @@
 //   4. Invalid JSON is reported to stderr only; the process never crashes on it.
 //   5. Nothing except protocol lines is ever written to stdout (logs go to stderr).
 
+import AppKit
 import Foundation
 
 // MARK: - Protocol messages

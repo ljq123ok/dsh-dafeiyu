@@ -5,6 +5,10 @@
 MacOS native refactor — BigFish now runs as a transparent macOS window with real-time
 animation, state bubbles, system notifications, and full desktop interactivity.
 
+> **作者声明**：本项目由原作者 **QCYTSN** 的 dsh-dafeiyu 派生而来（MIT License，视觉素材除外）。
+> 0.2.0 是社区用 **Swift + AppKit 重写**的 macOS 原生重构版，**仅支持 Apple Silicon（arm64）Mac**
+> （M1/M2/M3/M4 系列），功能对齐原版 v0.1.5 的桌面特性与交互（详见 README「与原版功能对比」）。
+
 ### Added
 
 - **macOS native helper**: Swift-based `DafeiyuHelper` executable replaces the Python

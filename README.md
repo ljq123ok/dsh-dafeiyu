@@ -6,6 +6,13 @@
 
 入口属于 DSH，生命周期属于 DSH，显示层属于桌面。
 
+> ## ⚠️ 作者与版本声明
+>
+> - **原作者**：本项目的全部原始代码与视觉素材版权归 **QCYTSN**（https://github.com/QCYTSN/dsh-dafeiyu）所有，遵循 MIT 许可证（视觉素材除外，见 [ASSET_LICENSE.md](ASSET_LICENSE.md)）。
+> - **本重构版**：`0.2.0` 是社区在**原作者基础上用 Swift + AppKit 重写的 macOS 原生重构版**——用 Swift 桌面助手（`DafeiyuHelper.app`）替代原版 Python/Qt 助手，实现「透明桌宠窗口 + 原版全部桌面交互」。
+> - **平台限制**：**仅支持 Apple Silicon（arm64）Mac**（M1/M2/M3/M4 系列），不支持 Intel Mac、Windows、Linux。
+> - **功能对比**：本重构版对齐了原版 v0.1.5 的全部桌面特性（状态动画、程序化动效、点击/双击互动、右键菜单、完成音效、系统通知、微动画频率、crossfade 等），具体对照见 [CHANGELOG.md](CHANGELOG.md) 0.2.0 一节的「Added/Changed」以及下方「与原版功能对比」小节。
+
 [English](README_EN.md) · [npm](https://www.npmjs.com/package/dsh-dafeiyu) · [下载最新版本](https://github.com/QCYTSN/dsh-dafeiyu/releases) · [更新日志](CHANGELOG.md) · [更新与回退](docs/UPDATING.md) · [验收记录](docs/ACCEPTANCE.md)
 
 [![npm](https://img.shields.io/npm/v/dsh-dafeiyu?label=npm)](https://www.npmjs.com/package/dsh-dafeiyu) · [![GitHub Release](https://img.shields.io/github/v/release/QCYTSN/dsh-dafeiyu?label=GitHub%20Release)](https://github.com/QCYTSN/dsh-dafeiyu/releases)
@@ -189,6 +196,27 @@ pnpm exec dsh plugin --profile web add "$HOME/Downloads/dsh-dafeiyu-<version>.tg
 | 响应子 Agent | 允许子 Agent 状态参与优先级选择；默认关闭 |
 
 设置由 DSH 保存，更新插件后通常不需要重新配置。
+
+## 与原版（v0.1.5）功能对比
+
+本重构版（0.2.0，Swift 原生）在原作者 v0.1.5 的基础上实现，**对齐原版桌面全部功能**：
+
+| 能力 | 原版 v0.1.5（Qt/Python） | 本重构版 0.2.0（Swift/AppKit） |
+| --- | --- | --- |
+| 透明置顶桌宠窗口 | ✅ NSPanel（全空间） | ✅ NSWindow（全空间，内容驱动尺寸） |
+| 状态动画 + 程序化动效 | ✅ breathe/bounce/shake 等 | ✅ 同款（CACurrentMediaTime 相位） |
+| 状态切换 crossfade | ✅ 0.10s | ✅ 0.10s（表情硬切） |
+| idle 微动画（activityLevel 调频） | ✅ quiet/normal/lively | ✅ 同款间隔表 |
+| 点击互动（摸头/尾巴/戳） | ✅ | ✅ |
+| 右键菜单（迷你 0.6~大 1.25） | ✅ | ✅（55%–140%） |
+| 完成/错误音效 | ✅ 自带 wav | ✅ 原版 wav + 音量拉满 |
+| 完成窗口抖动 | ✅ | ✅ |
+| 系统通知横幅 | ✅ | ✅（首次授权 + 图标） |
+| 拖动 + 位置持久化 | ✅ | ✅ |
+| 多任务卡片 | ✅ | ✅（**增强**：只列后台会话） |
+| 平台 | Windows/Linux/macOS 通用 | **仅 Apple Silicon Mac** |
+
+**差异与取舍**：本版仅面向 Apple Silicon macOS，文件更精简；交互、表现、通知与原版对齐，并加入「只看后台会话」等易用性增强。
 
 ## 桌面互动
 

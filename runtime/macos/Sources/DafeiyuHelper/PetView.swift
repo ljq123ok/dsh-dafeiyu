@@ -26,6 +26,14 @@ final class PetView: NSView {
   private var frames: [NSImage] = []
   /// Playback cursor.
   private var frameIndex = 0
+  /// Step12 (crossfade): the outgoing frame plus the fade-in curve. `fadeUntil`
+  /// is the media-time deadline; before it the new frame draws at an increasing
+  /// fraction over the old frame (fully opaque behind).
+  private var fadeFromImage: NSImage?
+  private var fadeStarted: CFTimeInterval = 0
+  private var fadeDuration: Double = 0
+  /// Clips that always swap atomically (no crossfade), per v0.1.5 rules.
+  private static let nonCrossfadeClips: Set<String> = ["blink", "glance", "dragging"]
   /// Whether the clip loops back to frame 0 after the last frame.
   private(set) var loops = true
   /// Procedural motion of the current clip (manifest `clips[name].motion`, e.g.
@@ -173,6 +181,20 @@ final class PetView: NSView {
   /// the manifest's clip motion (e.g. "breathe") and `name` the clip's name — both
   /// are needed to reproduce the v0.1.5 procedural animation at draw time.
   func setClip(_ frames: [NSImage], loops: Bool, motion: String? = nil, name: String? = nil) {
+    // Step12 (crossfade): the outgoing frame fades into the incoming clip.
+    // Different clip → 0.10 s; same clip re-shown → 0.045 s; expression clips
+    // (blink/glance/dragging) swap atomically, matching v0.1.5's rules.
+    if let previous = currentImage, !Self.nonCrossfadeClips.contains(name ?? ""),
+       let current = frames.first {
+      let sameClip = name != nil && name == self.clipName
+      fadeFromImage = previous
+      fadeStarted = CACurrentMediaTime()
+      fadeDuration = sameClip ? 0.045 : 0.10
+      _ = current
+    } else {
+      fadeFromImage = nil
+      fadeDuration = 0
+    }
     self.frames = frames
     self.loops = loops
     self.motion = motion
@@ -363,11 +385,24 @@ final class PetView: NSView {
     if angle != 0 {
       cg.rotate(by: -angle * .pi / 180)
     }
+    // Step12 (crossfade): while the fade is active, draw the outgoing frame at
+    // full opacity beneath and ramp the incoming frame up (pow 0.7, v0.1.5).
+    let elapsed = CACurrentMediaTime() - fadeStarted
+    let isFading = fadeDuration > 0 && elapsed < fadeDuration
+    if isFading, let from = fadeFromImage {
+      from.draw(
+        in: NSRect(x: -drawWidth / 2, y: -drawHeight / 2, width: drawWidth, height: drawHeight),
+        from: NSRect(origin: .zero, size: from.size),
+        operation: .sourceOver,
+        fraction: 1
+      )
+    }
+    let fraction: CGFloat = isFading ? CGFloat(pow(min(1, elapsed / fadeDuration), 0.7)) : 1
     image.draw(
       in: NSRect(x: -drawWidth / 2, y: -drawHeight / 2, width: drawWidth, height: drawHeight),
       from: NSRect(origin: .zero, size: image.size),
       operation: .sourceOver,
-      fraction: 1
+      fraction: fraction
     )
   }
 

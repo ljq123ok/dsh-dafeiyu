@@ -246,18 +246,25 @@ func showActiveClip(store: ManifestStore, window: PetWindow, fatalIfMissing: Boo
 
 // MARK: - Step11 idle micro-clip scheduling
 
-/// Step11: in the IDLE state with no pulse override, schedule a random idle micro
-/// clip (blink/glance from the manifest's `idleMicroClips` list) after a 3–8 s
-/// delay so the pet shows subtle motion instead of appearing frozen. The micro
-/// clip is non-looping — after it plays to completion we return to the idle clip
-/// and re-schedule. Non-idle states never trigger micro animation.
+/// Step12: idle micro-clip frequency follows the `activityLevel` setting
+/// (quiet/normal/lively), ported from v0.1.5 `microIntervals`: quiet waits
+/// 12–24 s, normal 6.5–12.5 s, lively 3.5–8 s. In the IDLE state with no pulse
+/// override, schedule a random idle micro clip (blink/glance from the manifest's
+/// `idleMicroClips` list) so the pet shows subtle motion instead of appearing
+/// frozen. The micro clip is non-looping — after it plays to completion we
+/// return to the idle clip and re-schedule. Non-idle states never trigger it.
 @MainActor
 func scheduleIdleMicro() {
   guard companionModel.activeState == "IDLE", companionModel.pulseState == nil else { return }
   guard let store = manifestStore, let window = petWindow else { return }
   let microNames = store.microClipNames
   guard !microNames.isEmpty else { return }
-  let delay = Double.random(in: 3.0...8.0)
+  let interval: (Double, Double) = switch companionModel.configActivityLevel {
+    case "quiet": (12.0, 24.0)
+    case "lively": (3.5, 8.0)
+    default: (6.5, 12.5)
+  }
+  let delay = Double.random(in: interval.0...interval.1)
   Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak store, weak window] _ in
     // Re-check idle/pulse at fire time — the state may have changed while the
     // timer was pending (a new STATE or PULSE arrived). If so, reschedule so we

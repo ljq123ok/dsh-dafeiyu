@@ -42,6 +42,8 @@ PACKAGE_VERSION="$(node -p "require('$ROOT/package.json').version")"
 
 echo "cleaning extended attributes (detritus-safe)..."
 xattr -cr "$APP" 2>/dev/null || true
+xattr -d com.apple.FinderInfo "$APP" 2>/dev/null || true
+xattr -d com.apple.fileprovider.fpfs#P "$APP" 2>/dev/null || true
 find "$APP" -name "._*" -delete 2>/dev/null || true
 
 echo "signing (adhoc)..."

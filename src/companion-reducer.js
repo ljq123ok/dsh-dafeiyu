@@ -231,6 +231,7 @@ export class CompanionReducer {
         return this.#toolResult(record, event)
 
       case 'user/message':
+        record.userInvolved = true
         return this.#userMessage(record, event)
 
       case 'todo/write':
@@ -433,6 +434,10 @@ export class CompanionReducer {
       progress: undefined,
       project: undefined,
       subagent: false,
+      // Step12: true once a human message arrived in this session — marks the
+      // session as "attended" (the user is talking to it), so the companion can
+      // prefer unattended background sessions for its bubble/card.
+      userInvolved: false,
       lastSeq: -1,
       updatedAt: ++this.clock,
     }
@@ -472,11 +477,22 @@ export class CompanionReducer {
         },
       }
     }
-    records.sort((left, right) => {
+    // Step12: the bubble shows unattended background work, not the conversation
+    // the user is currently talking to. Sessions that have seen a human message
+    // (userInvolved) are excluded when any unattended active session exists; if
+    // every active session is user-involved, fall back to the full ranking so the
+    // companion still reports something rather than going silent.
+    const unattended = records.filter((record) =>
+      !record.userInvolved
+      && record.state !== CompanionState.IDLE
+      && record.state !== CompanionState.DISCONNECTED
+    )
+    const pool = unattended.length > 0 ? unattended : records
+    pool.sort((left, right) => {
       const priority = (statePriority[right.state] ?? 0) - (statePriority[left.state] ?? 0)
       return priority || right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
     })
-    return { record: records[0] }
+    return { record: pool[0] }
   }
 
   #render(selection = this.#select()) {
@@ -500,10 +516,12 @@ export class CompanionReducer {
 
   #taskMessages() {
     const tasks = this.#activeTaskList()
-    // Show the card when at least two sessions are active overall (the selected
-    // one + at least one other). After the selected session is excluded the card
-    // may hold a single row — that is by design (user chose "card shows others").
+    // Show the card when at least two unattended sessions are active overall
+    // (the selected one + at least one other unattended session). After the
+    // selected session is excluded the card may hold a single row — by design
+    // ("card shows the other background work").
     const activeTotal = [...this.sessions.values()]
+      .filter((record) => !record.userInvolved)
       .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
       .length
     if (activeTotal < 2 || tasks.length === 0) {
@@ -527,10 +545,12 @@ export class CompanionReducer {
   }
 
   #activeTaskList() {
-    // The multi-task card lists every active session EXCEPT the selected one —
-    // the selected session's state is already shown in the single-task bubble,
-    // so listing it again duplicates the copy (user chose "card shows others").
+    // The multi-task card lists unattended background sessions only — any session
+    // the human is talking to (userInvolved) is excluded, matching the bubble's
+    // selection rule. The selected session is also excluded (its state is already
+    // in the bubble), so the card shows the *other* background sessions.
     return [...this.sessions.values()]
+      .filter((record) => !record.userInvolved)
       .filter((record) => record.id !== this.selectedSessionId)
       .filter((record) => record.state !== CompanionState.IDLE && record.state !== CompanionState.DISCONNECTED)
       .sort((left, right) => {

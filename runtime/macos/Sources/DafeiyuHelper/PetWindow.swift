@@ -1,6 +1,12 @@
-// PetWindow (Step5/Step6/Step7 of the macOS native refactor).
+// PetWindow (Step5/Step6/Step7/Step11 of the macOS native refactor).
 //
-// A transparent, borderless, always-on-top NSPanel that hosts an animated PetView.
+// A transparent, borderless, always-on-top NSWindow (not NSPanel) that hosts an
+// animated PetView. NSPanel was originally used for its "nonactivating overlay"
+// semantics, but NSPanel never accepts `becomeKeyWindow`, so `makeFirstResponder`
+// on the pet view always failed and `mouseDragged` never fired — the pet could
+// not be dragged. Step11 switches to a plain NSWindow; the helper is launched
+// as an accessory app (NSApplication.setActivationPolicy(.accessory)) so it does
+// not enter the dock or steal focus.
 // Window attributes are taken verbatim from the v2 plan §4.2. Frame advancement is
 // driven by a `Timer` scheduled on the main run loop (common mode), so it coexists
 // with `RunLoop.main.run()` and AppKit event handling without blocking the stdin
@@ -20,7 +26,7 @@
 
 import AppKit
 
-final class PetWindow: NSPanel {
+final class PetWindow: NSWindow {
   let petView = PetView()
   private var frameTimer: Timer?
   /// Unscaled panel size (pet + reserved bubble column + reserved card row).

@@ -133,6 +133,12 @@ var manifestStore: ManifestStore?
 var petWindow: PetWindow?
 
 if !isHeadless {
+  // Step11: helper is an accessory application — it does not appear in the dock
+  // or Force Touch menu, and its windows do not steal focus from the active app
+  // when they are clicked. This makes the pet feel like an OS-level overlay while
+  // still allowing its NSWindow to become key during a drag (which NSPanel could
+  // not do).
+  NSApplication.shared.setActivationPolicy(.accessory)
   do {
     // Step7: read the initial settings from DSH_DAFEIYU_* env (startup values; live
     // CONFIG messages override them afterwards).

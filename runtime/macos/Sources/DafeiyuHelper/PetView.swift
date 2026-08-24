@@ -85,20 +85,20 @@ final class PetView: NSView {
 
   // MARK: - Key window (dragging requires the view to be first responder)
 
-  // Step11: the panel is now a normal borderless panel (not nonactivating), so the
-  // system can make it the key window on mouse-down. We still call makeKey()
-  // explicitly to be safe, and resignKey() at mouse-up to restore the "don't steal
-  // focus from the app the user was using" behavior.
+  // Step11: the panel is now a normal NSWindow (not NSPanel) so it CAN become
+  // the key window on mouse-down and its view CAN become first responder.
+  // NSPanel never accepts becomeKeyWindow, which was why mouseDragged never
+  // fired. We make the window key at mouse-down and release it at mouse-up.
   override func becomeFirstResponder() -> Bool { true }
   override func resignFirstResponder() -> Bool { true }
   override var acceptsFirstResponder: Bool { true }
 
   override func mouseDown(with event: NSEvent) {
     guard let window else { return }
-    // Step11: explicitly make the panel key so the view can become first responder
-    // and mouseDragged fires. (A nonactivating panel could never become key — that
-    // was the original root cause; Step11 removed nonactivating to fix it.)
+    // Step11: make the window key (NSPanel could never become key; ordinary
+    // NSWindow can, so this now succeeds and mouseDragged fires).
     window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(self)
     dragStartScreen = NSEvent.mouseLocation
     dragStartWindowOrigin = window.frame.origin
   }
@@ -112,8 +112,6 @@ final class PetView: NSView {
   override func mouseUp(with event: NSEvent) {
     dragStartScreen = nil
     dragStartWindowOrigin = nil
-    // Step11: release key status so the pet doesn't steal focus from whatever the
-    // user was using before clicking it.
     window?.resignKey()
     onDragEnded?()
   }

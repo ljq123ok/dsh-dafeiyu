@@ -19,6 +19,7 @@
 //   - mouse down/dragged/up drive window dragging through `onDragDelta`/`onDragEnded`.
 
 import AppKit
+import QuartzCore
 
 final class PetView: NSView {
   /// Current clip frames (empty when nothing is set).
@@ -27,6 +28,13 @@ final class PetView: NSView {
   private var frameIndex = 0
   /// Whether the clip loops back to frame 0 after the last frame.
   private(set) var loops = true
+  /// Procedural motion of the current clip (manifest `clips[name].motion`, e.g.
+  /// "breathe"). nil = the pet is drawn statically. Drives the breathe/think/work/
+  /// wait/bounce/shake/dizzy animation in `drawPet` (t13 F2, v0.1.5 port).
+  private var motion: String?
+  /// Name of the current clip — the working_search/working_command clips get their
+  /// own hop override in `drawPet`, so the name must be available at draw time.
+  private var clipName: String?
 
   // MARK: - Step6 overlay state
 
@@ -42,9 +50,9 @@ final class PetView: NSView {
   /// of truth shared with PetWindow, so the panel is always large enough that the
   /// overlays land inside the window — visibility never depends on AppKit's
   /// default non-clipping view behavior.
-  static let bubbleReservedWidth: CGFloat = 256
+  static let bubbleReservedWidth: CGFloat = 320
   /// 5 card rows (5 × 22) + 12 padding + 12 bottom margin.
-  static let cardReservedHeight: CGFloat = 134
+  static let cardReservedHeight: CGFloat = 170
 
   // MARK: - Step7 configuration (from CONFIG / DSH_DAFEIYU_* env)
 
@@ -137,10 +145,14 @@ final class PetView: NSView {
     onDragEnded?()
   }
 
-  /// Replace the displayed clip. Resets the cursor to the first frame.
-  func setClip(_ frames: [NSImage], loops: Bool) {
+  /// Replace the displayed clip. Resets the cursor to the first frame. `motion` is
+  /// the manifest's clip motion (e.g. "breathe") and `name` the clip's name — both
+  /// are needed to reproduce the v0.1.5 procedural animation at draw time.
+  func setClip(_ frames: [NSImage], loops: Bool, motion: String? = nil, name: String? = nil) {
     self.frames = frames
     self.loops = loops
+    self.motion = motion
+    self.clipName = name
     self.frameIndex = 0
     needsDisplay = true
   }
@@ -165,6 +177,17 @@ final class PetView: NSView {
     }
     // Non-looping clip: hold the last frame until `setClip` replaces it.
     needsDisplay = true
+  }
+
+  /// One animation tick driven by the window's timer: advance the frame cursor for
+  /// multi-frame clips, and repaint single-frame motion clips so the procedural
+  /// animation (breathe/think/…) keeps running even though the frame never changes.
+  func animateTick() {
+    if frames.count > 1 {
+      advanceFrame()
+    } else {
+      needsDisplay = true
+    }
   }
 
   /// The image currently shown.
@@ -200,7 +223,7 @@ final class PetView: NSView {
       width: petSize.width,
       height: petSize.height
     )
-    image.draw(in: petRect)
+    drawPet(image, in: petRect)
 
     // Step6 overlays: bubble on the right side of the pet, task card below it.
     // Step7: visibility is filtered per the bubble mode/states.
@@ -210,9 +233,82 @@ final class PetView: NSView {
     if !card.isEmpty {
       let visible = card.filter { bubbleFilter($0.state) }
       if visible.count >= 2 {
-        drawCard(visible)
+        drawCard(visible, petWidth: petSize.width)
       }
     }
+  }
+
+  // MARK: - Procedural motion (v0.1.5 drawPet port)
+
+  /// Draw the pet image with the current clip's procedural motion applied:
+  /// breathe/think/work/wait/bounce/shake/dizzy, plus a hop override for the
+  /// working_search/working_command clips. `reducedMotion` disables the motion
+  /// (the pet is drawn statically in place).
+  ///
+  /// The math is ported from v0.1.5 `drawPet`. Note the sign conventions: this
+  /// view's axes point up (bottom-left origin), while the original content view
+  /// was flipped (top-left origin, y down) — so the y offsets are negated and the
+  /// rotation is applied as `-angle` to reproduce the original screen appearance
+  /// (positive angle tilts clockwise). The phase is wall-clock time, so animation
+  /// stays smooth and independent of the frame timer's cadence.
+  private func drawPet(_ image: NSImage, in petRect: NSRect) {
+    let phase = CACurrentMediaTime()
+    var motionName = motion
+    if reducedMotion { motionName = nil }
+    var scaleExtra: CGFloat = 1
+    var angle: CGFloat = 0
+    var offsetX: CGFloat = 0
+    var offsetY: CGFloat = 0
+    switch motionName {
+    case "breathe":
+      scaleExtra = 1 + 0.02 * CGFloat(sin(phase * 2.5))
+      angle = CGFloat(sin(phase * 2.5)) * 1.5
+    case "think":
+      offsetY = -CGFloat(sin(phase * 2.8)) * 3
+      angle = CGFloat(sin(phase * 1.3)) * 0.8
+    case "work":
+      offsetX = CGFloat(sin(phase * 5.4)) * 3
+      angle = CGFloat(sin(phase * 3.1)) * 1.0
+    case "wait":
+      offsetY = -CGFloat(sin(phase * 1.8)) * 1
+      angle = CGFloat(sin(phase * 1.2)) * 0.8
+    case "bounce":
+      offsetY = abs(CGFloat(sin(phase * 5.2))) * 8
+      scaleExtra = 1 + 0.02 * CGFloat(sin(phase * 5.2))
+    case "shake", "dizzy":
+      offsetX = CGFloat(sin(phase * 11.0)) * 4
+      angle = CGFloat(sin(phase * 11.0)) * 1.5
+    default:
+      break
+    }
+    if clipName == "working_search" || clipName == "working_command" {
+      offsetY = abs(CGFloat(sin(phase * 4.5))) * 5
+      angle = CGFloat(sin(phase * 9.0)) * 2.5
+    }
+    offsetX *= scale
+    offsetY *= scale
+
+    // Scale around the image center (the draw rect grows, the center stays put),
+    // then rotate around the same center and apply the offset — same geometry as
+    // the original: x = minX + (baseW - drawW)/2 + offsetX.
+    let drawWidth = petRect.width * scaleExtra
+    let drawHeight = petRect.height * scaleExtra
+    let centerX = petRect.midX + offsetX
+    let centerY = petRect.midY + offsetY
+
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+    guard let cg = NSGraphicsContext.current?.cgContext else { return }
+    cg.translateBy(x: centerX, y: centerY)
+    if angle != 0 {
+      cg.rotate(by: -angle * .pi / 180)
+    }
+    image.draw(
+      in: NSRect(x: -drawWidth / 2, y: -drawHeight / 2, width: drawWidth, height: drawHeight),
+      from: NSRect(origin: .zero, size: image.size),
+      operation: .sourceOver,
+      fraction: 1
+    )
   }
 
   // MARK: - Overlay drawing (pure AppKit; no third-party dependencies)
@@ -276,7 +372,7 @@ final class PetView: NSView {
     }
   }
 
-  private func drawCard(_ items: [TaskItem]) {
+  private func drawCard(_ items: [TaskItem], petWidth: CGFloat) {
     // Card below the pet: one row per task, first (highest priority) highlighted.
     // Step7: the card top hugs the pet's bottom edge (cardReservedHeight * scale) and
     // the card grows downward, scaled by `bubbleScale` around that top-left anchor.
@@ -288,7 +384,7 @@ final class PetView: NSView {
     context.saveGraphicsState()
     defer { context.restoreGraphicsState() }
     let cg = context.cgContext
-    cg.translateBy(x: 0, y: Self.cardReservedHeight * scale - 8)
+    cg.translateBy(x: max(0, (petWidth - cardWidth) / 2), y: Self.cardReservedHeight * scale - 8)
     cg.scaleBy(x: bubbleScale, y: bubbleScale)
 
     let cardRect = NSRect(x: 0, y: -cardHeight, width: cardWidth, height: cardHeight)
@@ -305,8 +401,11 @@ final class PetView: NSView {
         let highlight = NSRect(x: cardRect.minX + 4, y: y - 2, width: cardWidth - 8, height: rowHeight - 4)
         NSBezierPath(roundedRect: highlight, xRadius: 6, yRadius: 6).fill()
       }
-      let size = text.size()
-      text.draw(at: NSPoint(x: cardRect.minX + 10, y: y - size.height / 2 - 2))
+      // Truncate to the card's text column (10pt insets each side) with tail
+      // ellipsis; `draw(with:)` respects the rect and clips instead of
+      // overflowing — the "对话看不完整" clipping bug.
+      let textColumn = NSRect(x: cardRect.minX + 10, y: y - rowHeight, width: cardWidth - 20, height: rowHeight)
+      text.draw(with: textColumn, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
       y -= rowHeight
     }
   }

@@ -110,6 +110,11 @@ final class CompanionModel {
   /// Activity level ("quiet"/"normal"/"lively"). Carried by CONFIG/env but **not
   /// consumed yet** (idle micro-action frequency is a later step, see plan §8).
   var configActivityLevel: String = "normal"
+  /// Completion sound for SUCCESS/ERROR (default true). Seeded from the
+  /// DSH_DAFEIYU_SOUND_ENABLED env at startup and applied live via CONFIG
+  /// `soundEnabled`; off means completely silent (SoundPlayer and notification
+  /// banners both respect it).
+  var configSoundEnabled: Bool = true
 
   /// Hook invoked whenever the active clip should be re-resolved and redrawn — after a
   /// STATE change or a pulse expiry. main.swift wires this to `showActiveClip` so the
@@ -166,6 +171,9 @@ final class CompanionModel {
     }
     if let activityLevel = config["activityLevel"] as? String, ["quiet", "normal", "lively"].contains(activityLevel) {
       configActivityLevel = activityLevel
+    }
+    if let soundEnabled = config["soundEnabled"] as? Bool {
+      configSoundEnabled = soundEnabled
     }
     onActiveClipChanged?()
   }

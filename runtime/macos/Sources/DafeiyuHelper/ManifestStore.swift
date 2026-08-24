@@ -27,8 +27,8 @@ struct PetManifest: Codable {
     let frames: [String]
     let frameMs: Int
     let loop: Bool
-    // `motion` is reserved metadata (e.g. "breathe") describing the clip's intent.
-    // Step5 does not require it to render, so it is parsed but unused — see t13 F2.
+    // `motion` (e.g. "breathe") describes the clip's procedural animation intent;
+    // it now flows into ResolvedClip so PetView can animate it (t13 F2).
     let motion: String?
   }
 }
@@ -45,6 +45,9 @@ struct ResolvedClip {
   let frames: [NSImage]
   let frameMs: Int
   let loops: Bool
+  /// Procedural motion of the clip (manifest `clips[name].motion`, e.g. "breathe").
+  /// nil = static drawing; consumed by PetView.draw (t13 F2).
+  let motion: String?
 }
 
 final class ManifestStore {
@@ -93,7 +96,7 @@ final class ManifestStore {
       images.append(image)
     }
     guard !images.isEmpty else { throw ManifestError.frameNotFound }
-    return ResolvedClip(name: name, frames: images, frameMs: max(1, c.frameMs), loops: c.loop)
+    return ResolvedClip(name: name, frames: images, frameMs: max(1, c.frameMs), loops: c.loop, motion: c.motion)
   }
 
   /// The IDLE base clip (also the animation's resting state).

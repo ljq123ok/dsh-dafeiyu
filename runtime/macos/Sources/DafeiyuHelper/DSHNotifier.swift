@@ -14,8 +14,9 @@
 //   - Swift does not invent copy: the title is the fixed "大肥鱼", the body is
 //     the reducer-computed message/detail; a neutral fallback (with a stderr
 //     note) is used only when both are missing — never silently.
-//   - SUCCESS uses the default sound; ERROR is silent (no sound) so a failure
-//     banner stays unobtrusive.
+//   - Banners are visual-only: completion audio is owned by SoundPlayer
+//     (NSSound, gated by the `soundEnabled` config), so a completion never
+//     double-dings and the banner never makes noise on its own.
 //   - Named DSHNotifier (not "NotificationCenter") to avoid colliding with
 //     Foundation's NotificationCenter.
 //
@@ -67,9 +68,10 @@ enum DSHNotifier {
       }
       content.body = body
       content.userInfo = ["state": state]
-      if state == "SUCCESS" {
-        content.sound = UNNotificationSound.default
-      }
+      // No content.sound: completion audio is the pet's own (SoundPlayer,
+      // NSSound + soundEnabled config). Adding the notification's default
+      // sound here would double-ding alongside the pet chime, and a
+      // soundEnabled = off setting would still make noise.
       let request = UNNotificationRequest(
         identifier: UUID().uuidString,
         content: content,

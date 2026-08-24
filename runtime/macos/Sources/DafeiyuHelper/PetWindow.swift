@@ -130,7 +130,7 @@ final class PetWindow: NSWindow {
   /// anchored. The pet view covers the whole (new) panel afterwards. Step11: the
   /// right-click menu also calls this, so it persists the new scale too.
   func applyScale(_ s: CGFloat) {
-    let clamped = max(0.7, min(1.4, s))
+    let clamped = max(0.55, min(1.4, s))
     petView.scale = clamped
     let newSize = NSSize(width: baseSize.width * clamped, height: baseSize.height * clamped)
     let current = frame
@@ -177,7 +177,7 @@ final class PetWindow: NSWindow {
     let menu = NSMenu()
 
     let sizeMenu = NSMenu()
-    for (label, value) in [("小", 0.8), ("标准", 1.0), ("大", 1.25)] {
+    for (label, value) in [("迷你", 0.6), ("小", 0.8), ("标准", 1.0), ("大", 1.25)] {
       let item = NSMenuItem(title: label, action: #selector(applyMenuScale(_:)), keyEquivalent: "")
       item.target = self
       item.representedObject = value
@@ -291,8 +291,11 @@ final class PetWindow: NSWindow {
     return NSPoint(x: x, y: y)
   }
 
-  /// Switch to a new clip and (re)start the frame timer. Single-frame clips need no
-  /// timer; Step7: looping clips with reduced motion hold their first frame, so they
+  /// Switch to a new clip and (re)start the animation timer. The same timer drives
+  /// frame advancement for multi-frame clips AND continuous repainting for
+  /// single-frame clips with procedural motion (breathe/think/…), so a motion clip
+  /// animates even though its frame never changes. Step7: looping clips with reduced
+  /// motion hold their first frame (and motion is disabled in the view), so they
   /// need no timer either. The timer fires on the main run loop's common modes, so it
   /// keeps ticking while the panel is shown and does not starve the stdin reader.
   func showClip(_ clip: ResolvedClip) {
@@ -300,18 +303,24 @@ final class PetWindow: NSWindow {
     frameTimer = nil
     lastClip = clip
 
-    petView.setClip(clip.frames, loops: clip.loops)
+    petView.setClip(clip.frames, loops: clip.loops, motion: clip.motion, name: clip.name)
     if petView.reducedMotion && clip.loops { return }
-    guard clip.frames.count > 1 else { return }
+    let frameAnimates = clip.frames.count > 1
+    let motionAnimates = !petView.reducedMotion && clip.motion != nil
+    guard frameAnimates || motionAnimates else { return }
 
-    let interval = max(1.0 / 60.0, Double(clip.frameMs) / 1000.0)
+    // Frame playback follows the clip's frameMs; a motion-only clip (single frame)
+    // repaints at 1/30 s so the procedural animation stays smooth.
+    let interval: TimeInterval = frameAnimates
+      ? max(1.0 / 60.0, Double(clip.frameMs) / 1000.0)
+      : 1.0 / 30.0
     frameTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) {
       [weak self] _ in
       // Step10 (F3): the timer is scheduled on the main run loop and fires on
       // the main thread. `assumeIsolated` is a no-op runtime assertion — it runs
       // inline without an actor hop, but Swift 6 strict concurrency requires an
       // explicit bridge from this Sendable closure into the main actor.
-      MainActor.assumeIsolated { self?.petView.advanceFrame() }
+      MainActor.assumeIsolated { self?.petView.animateTick() }
     }
   }
 }

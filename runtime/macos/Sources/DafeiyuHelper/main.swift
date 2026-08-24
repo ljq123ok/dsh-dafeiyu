@@ -119,6 +119,11 @@ func notifyCompletionIfNeeded(state: String, message: String?, detail: String?) 
   if key == lastNotificationKey { return }
   lastNotificationKey = key
   DSHNotifier.deliver(state: state, message: message, detail: detail)
+  // Step12: completion sound (NSSound via SoundPlayer) — the pet is the single
+  // audio source for completions, gated by the `soundEnabled` config (env at
+  // startup, live CONFIG afterwards). Same dedup as the banner, so a PULSE→STATE
+  // echo of one completion never double-chimes.
+  SoundPlayer.playCompletion(state: state, enabled: companionModel.configSoundEnabled)
 }
 
 // MARK: - Argument parsing
@@ -481,6 +486,11 @@ func applyEnvConfig() {
   }
   if let level = env["DSH_DAFEIYU_ACTIVITY_LEVEL"], ["quiet", "normal", "lively"].contains(level) {
     companionModel.configActivityLevel = level
+  }
+  if let raw = env["DSH_DAFEIYU_SOUND_ENABLED"] {
+    // "0" disables completion sounds explicitly; every other value (including
+    // "1"/"true"/"on") is read as enabled, matching the original v0.1.5 gate.
+    companionModel.configSoundEnabled = raw != "0"
   }
 }
 

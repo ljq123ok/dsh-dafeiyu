@@ -122,18 +122,19 @@ test('Intel macOS refuses to start with a clear Apple-Silicon-only error', () =>
   )
 })
 
-test('Apple Silicon macOS without a built helper refuses to start', () => {
-  // No Intel fallback and no Python fallback: an unbuilt arm64 helper is a hard error.
-  assert.throws(
-    () => resolveHelperLaunch({
-      platform: 'darwin',
-      arch: 'arm64',
-      isWslEnv: false,
-      bundledPath,
-      darwinArm64Path,
-      helperPath,
-      fileExists: () => false,
-    }),
-    /only supports Apple Silicon \(darwin-arm64\)/,
-  )
+test('Apple Silicon macOS resolves the arm64 helper path even before build', () => {
+  // Step12: an unbuilt helper is NOT a hard error at resolve time — the path is
+  // still returned and spawn surfaces the ENOENT/EACCES later. This keeps
+  // defaultCommand() deterministic on a fresh CI checkout (no artifacts), which
+  // the "exposes WSL detection helpers without throwing" test relies on.
+  const resolved = resolveHelperLaunch({
+    platform: 'darwin',
+    arch: 'arm64',
+    isWslEnv: false,
+    bundledPath,
+    darwinArm64Path,
+    helperPath,
+    fileExists: () => false,
+  })
+  assert.equal(resolved.command, darwinArm64Path)
 })

@@ -97,7 +97,11 @@ function resolveHelperLaunch({
   // top-priority branch. Intel macOS (darwin-x64) or an unbuilt arm64 helper
   // refuse to start with a clear error — there is no Python/Intel fallback.
   if (platform === 'darwin') {
-    if (arch === 'arm64' && fileExists(darwinArm64Path)) {
+    if (arch === 'arm64') {
+      // Return the resolved path even when the artifact is not built yet (a dev
+      // checkout or a pre-build test run): spawn will fail with a clear ENOENT/
+      // EACCES error either way, and launch-time probing must not throw so
+      // platform-exposure tests (defaultCommand) stay deterministic.
       return { command: darwinArm64Path, args: headless ? ['--headless'] : [] }
     }
     throw new Error(

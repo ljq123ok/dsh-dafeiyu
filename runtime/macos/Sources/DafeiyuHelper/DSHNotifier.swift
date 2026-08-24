@@ -54,7 +54,19 @@ enum DSHNotifier {
     Task { @MainActor in
       let center = UNUserNotificationCenter.current()
       let settings = await center.notificationSettings()
-      let status = settings.authorizationStatus
+      var status = settings.authorizationStatus
+      // Step12: on first run the status is .notDetermined. Instead of silently
+      // skipping (which makes the feature look broken), request authorization
+      // once so macOS shows the system permission prompt — the user opts in and
+      // banners start working. .denied is still a hard skip (never re-prompt).
+      if status == .notDetermined {
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        if !granted {
+          log("notification permission denied by user; skipping desktop notification")
+          return
+        }
+        status = .authorized
+      }
       guard status == .authorized || status == .provisional else {
         log("notification permission not granted (status: \(statusName(status))); skipping desktop notification")
         return

@@ -31,12 +31,18 @@ echo "assembling $APP..."
 rm -rf "$APP"
 mkdir -p "$(dirname "$BIN")" "$APP/Contents/Resources"
 cp "$ROOT/runtime/macos/Info.plist" "$APP/Contents/Info.plist"
-cp -R "$ROOT/assets" "$APP/Contents/Resources/assets"
+# ditto (not cp -R): excludes source extended attributes (com.apple.fileprovider.*),
+# which make codesign reject the bundle with "detritus not allowed".
+ditto "$ROOT/assets" "$APP/Contents/Resources/assets"
 cp "$BIN_SRC" "$BIN"
 
 PACKAGE_VERSION="$(node -p "require('$ROOT/package.json').version")"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PACKAGE_VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $PACKAGE_VERSION" "$APP/Contents/Info.plist"
+
+echo "cleaning extended attributes (detritus-safe)..."
+xattr -cr "$APP" 2>/dev/null || true
+find "$APP" -name "._*" -delete 2>/dev/null || true
 
 echo "signing (adhoc)..."
 codesign --force --sign - "$APP"

@@ -148,6 +148,12 @@ if !isHeadless {
     companionModel.onActiveClipChanged = { [weak store, weak window] in
       guard let s = store, let w = window else { return }
       showActiveClip(store: s, window: w, fatalIfMissing: false)
+      // Step11: in IDLE with no pulse override, start scheduling idle micro clips
+      // (blink/glance from the manifest) so the pet shows subtle motion instead of
+      // appearing frozen. Non-idle states never trigger micro animation.
+      if companionModel.activeState == "IDLE", companionModel.pulseState == nil {
+        scheduleIdleMicro()
+      }
     }
     logToStderr("visual mode: idle clip shown")
   } catch {
@@ -175,6 +181,54 @@ func showActiveClip(store: ManifestStore, window: PetWindow, fatalIfMissing: Boo
     // revert to idle so the pet never disappears.
     logToStderr("cannot load clip for \(companionModel.activeState); falling back to idle")
     if let idle = try? store.idleClip() { window.showClip(idle) }
+  }
+}
+
+// MARK: - Step11 idle micro-clip scheduling
+
+/// Step11: in the IDLE state with no pulse override, schedule a random idle micro
+/// clip (blink/glance from the manifest's `idleMicroClips` list) after a 3–8 s
+/// delay so the pet shows subtle motion instead of appearing frozen. The micro
+/// clip is non-looping — after it plays to completion we return to the idle clip
+/// and re-schedule. Non-idle states never trigger micro animation.
+@MainActor
+func scheduleIdleMicro() {
+  guard companionModel.activeState == "IDLE", companionModel.pulseState == nil else { return }
+  guard let store = manifestStore, let window = petWindow else { return }
+  let microNames = store.microClipNames
+  guard !microNames.isEmpty else { return }
+  let delay = Double.random(in: 3.0...8.0)
+  Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak store, weak window] _ in
+    // Re-check idle/pulse at fire time — the state may have changed while the
+    // timer was pending (a new STATE or PULSE arrived). If so, reschedule so we
+    // don't interrupt a WORKING/THINKING clip with a blink.
+    guard companionModel.activeState == "IDLE", companionModel.pulseState == nil else {
+      scheduleIdleMicro()
+      return
+    }
+    guard let store, let window else { return }
+    guard let name = store.microClipNames.randomElement() else { return }
+    do {
+      let clip = try store.clip(named: name)
+      window.showClip(clip)
+      // Non-looping micro clips hold on their last frame; return to idle after
+      // the clip's playback duration plus a short tail so the last frame is
+      // visible for at least one full tick.
+      let duration = Double(clip.frames.count) * Double(clip.frameMs) / 1000.0 + 0.5
+      Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak store, weak window] _ in
+        guard let store, let window else { return }
+        do {
+          let idle = try store.clip(named: "idle")
+          window.showClip(idle)
+          scheduleIdleMicro()
+        } catch {
+          logToStderr("cannot load idle clip for micro return: \(error)")
+        }
+      }
+    } catch {
+      logToStderr("cannot load idle micro clip '\(name)': \(error)")
+      scheduleIdleMicro()
+    }
   }
 }
 
